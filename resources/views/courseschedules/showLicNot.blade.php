@@ -257,7 +257,7 @@
                                                 </td>
                                                 <td style="white-space: nowrap;vertical-align: middle;">
                                                     @foreach($turma->instructors as $instructor)
-                                                        {{ $instructor->getPronounTreatment() . $instructor->getNomAbrev()}} <br/>
+                                                        {{ $instructor->getNomAbrev()}} <br/>
                                                     @endforeach
                                                 </td>
                                                 <td style="vertical-align: middle;">
@@ -467,7 +467,7 @@
                                     </td>
                                     <td style="white-space: nowrap;vertical-align: middle;">
                                         @foreach($turma->instructors as $instructor)
-                                            {{ $instructor->getPronounTreatment() . $instructor->getNomAbrev()}} <br/>
+                                            {{ $instructor->getNomAbrev()}} <br/>
                                         @endforeach
                                     </td>
                                     <td style="vertical-align: middle;">

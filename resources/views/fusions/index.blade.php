@@ -49,7 +49,7 @@
                                     <td rowspan="{{count($fusion->schoolclasses)}}" style="white-space: nowrap;
                                                                                     vertical-align: middle;">
                                         @foreach($fusion->master->instructors as $instructor)
-                                            {{ $instructor->getPronounTreatment() . $instructor->getNomAbrev()}} <br/>
+                                            {{ $instructor->getNomAbrev()}} <br/>
                                         @endforeach
                                     </td>
                                 @endif
