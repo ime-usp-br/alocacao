@@ -9,10 +9,6 @@
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Horário das Disciplinas</h1>
             
-            @php
-                $schoolterm = App\Models\SchoolTerm::getLatest();
-            @endphp
-
             <h4 class='text-center mb-5'>{{ $schoolterm->period . ' de ' . $schoolterm->year }}</h4>
 
             <div class="row">
@@ -27,9 +23,6 @@
                             ) }}"
                         >
                             {!! $course->nomcur." - ".ucfirst($course->perhab) !!}
-                            @if($course->grupo)
-                                {!! " Grupo ".$course->grupo !!}
-                            @endif
                         </a>
                         </li>
                     @endforeach     

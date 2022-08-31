@@ -7,13 +7,10 @@
 <div class="container">
     <div class="row justify-content-center">
         <div class="col-md-12">
-            @php
-                $schoolterm = App\Models\SchoolTerm::getLatest();
-            @endphp
             <h1 class='text-center mb-5'><b>{!! $titulo !!}</b></h1>
             <h2 class='text-center mb-5'>Horário das Disciplinas - {!! $schoolterm->period . ' de ' . $schoolterm->year !!}</h2>
             
-            @foreach(App\Models\Observation::whereBelongsTo($schoolterm)->get() as $observation)
+            @foreach($observations as $observation)
                 <div class="card my-3">
                     <div class="card-body">
                         <h3 class='card-title' style="color:blue">{!! $observation->title !!}</h3>
@@ -25,31 +22,6 @@
             @endforeach
 
             @if($schoolclasses->isNotEmpty())
-                @php          
-                    $dias = ['seg', 'ter', 'qua', 'qui', 'sex'];  
-
-                    $temSab = $schoolclasses->filter(function($turma){
-                        foreach($turma->classschedules as $schedule){
-                            if($schedule->diasmnocp=="sab"){
-                                return true;
-                            }
-                        }
-                        return false;
-                    })->isNotEmpty();
-
-                    if($temSab){
-                        array_push($dias, "sab");
-                    }
-
-                    $schedules = array_unique(App\Models\ClassSchedule::whereHas("schoolclasses", function($query)use($schoolclasses){$query->whereIn("id",$schoolclasses->pluck("id")->toArray());})->select(["horent","horsai"])->where("diasmnocp", "!=", "dom")->get()->toArray(),SORT_REGULAR);
-
-                    array_multisort(array_column($schedules, "horent"), SORT_ASC, $schedules);
-
-                    $horarios = [];
-                    foreach($schedules as $schedule){
-                        array_push($horarios, $schedule["horent"]." às ".$schedule["horsai"]);
-                    }
-                @endphp
                 <table class="table table-bordered" style="font-size:15px;">
                     <tr style="background-color:#F5F5F5">
                         <th>Horários</th>
@@ -58,14 +30,14 @@
                         <th>Quarta</th>
                         <th>Quinta</th>
                         <th>Sexta</th>
-                        @if($temSab)
+                        @if(in_array("sab",$days))
                             <th>Sábado</th>
                         @endif
                     </tr>
-                    @foreach($horarios as $h)
+                    @foreach($schedules as $h)
                         <tr>
                             <td style="vertical-align: middle;" width="170px">{{ explode(" ",$h)[0] }}<br>{{ explode(" ",$h)[1] }}<br>{{ explode(" ",$h)[2] }}</td>
-                            @foreach($dias as $dia)
+                            @foreach($days as $dia)
                                 <td style="vertical-align: middle;" width="180px">                                                
                                     @foreach($schoolclasses as $turma)
                                         @if($turma->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())

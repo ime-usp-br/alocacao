@@ -7,15 +7,10 @@
 <div class="container">
     <div class="row justify-content-center">
         <div class="col-md-12">
-            @php
-                $schoolterm = App\Models\SchoolTerm::getLatest();
-                $schoolclasses = App\Models\SchoolClass::whereBelongsTo($schoolterm)->where("externa", false)->orderBy("coddis")->get();
-                $dias = ["seg"=>1,"ter"=>2,"qua"=>3,"qui"=>4,"sex"=>5,"sab"=>6];
-            @endphp
             <h1 class='text-center mb-5'><b>Relação completa</b></h1>
             <h2 class='text-center mb-5'>{!! $schoolterm->period . ' de ' . $schoolterm->year !!}</h2>
 
-            @foreach(App\Models\Observation::whereBelongsTo($schoolterm)->get() as $observation)
+            @foreach($observations as $observation)
                 <div class="card my-3">
                     <div class="card-body">
                         <h3 class='card-title' style="color:blue">{!! $observation->title !!}</h3>
@@ -58,7 +53,7 @@
                                 @endif
                             </td>
                             <td style="white-space: nowrap;vertical-align: middle;">
-                                @foreach($schoolclass->classschedules->sortBy(fn($val,$key)=>$dias[$val["diasmnocp"]]) as $schedule)
+                                @foreach($schoolclass->classschedules->sortBy(fn($val,$key)=>$days[$val["diasmnocp"]]) as $schedule)
                                     {{ $schedule->diasmnocp . ' ' . $schedule->horent . ' ' . $schedule->horsai }} <br/>
                                 @endforeach
                             </td>
