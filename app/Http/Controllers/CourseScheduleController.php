@@ -74,7 +74,7 @@ class CourseScheduleController extends Controller
                         }
                         })->get();
                 
-                $show[$semester][$nomhab] = $turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1));
+                $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1)));
 
                 if($show[$semester][$nomhab]){  
                     if($course->nomcur=="Matemática Licenciatura" and $course->perhab=="diurno"){
