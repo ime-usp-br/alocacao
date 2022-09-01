@@ -14,7 +14,7 @@
         "laravel/tinker": "^2.5",
         "romanzipp/laravel-queue-monitor": "^2.3",
         "staudenmeir/eloquent-has-many-deep": "^1.14",
-        "uspdev/laravel-usp-theme": "^2.5",
+        "uspdev/laravel-usp-theme": "dev-master",
         "uspdev/replicado": "^1.13",
         "uspdev/senhaunica-socialite": "^4.3"
     },
@@ -65,5 +65,11 @@
         "sort-packages": true
     },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/ayrtonnotrya/laravel-usp-theme.git"
+        }
+    ]
 }
