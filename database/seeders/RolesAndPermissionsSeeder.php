@@ -23,6 +23,7 @@ class RolesAndPermissionsSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'visualizar dobradinhas']);
         Permission::firstOrCreate(['name' => 'visualizar turmas externas']);
         Permission::firstOrCreate(['name' => 'visualizar salas']);
+        Permission::firstOrCreate(['name' => 'visualizar observações']);
         Permission::firstOrCreate(['name' => 'visualizar menu config']);
         Permission::firstOrCreate(['name' => 'reservar salas no urano']);
         Permission::firstOrCreate(['name' => 'distribuir turmas nas salas']);
@@ -37,6 +38,7 @@ class RolesAndPermissionsSeeder extends Seeder
             ->givePermissionTo('visualizar menu config')
             ->givePermissionTo('reservar salas no urano')
             ->givePermissionTo('distribuir turmas nas salas')
+            ->givePermissionTo('visualizar observações')
             ->givePermissionTo('esvaziar salas');
 
         Role::firstOrCreate(['name' => 'Administrador'])

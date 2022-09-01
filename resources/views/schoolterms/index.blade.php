@@ -4,18 +4,10 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
+<div id="layout_conteudo">
+    <div class="justify-content-center">
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Períodos Letivos</h1>
-
-            <p class="text-right">
-                <a class="btn btn-primary" href="{{ route('schoolterms.create') }}">
-                    <i class="fas fa-plus-circle"></i>
-                    Cadastrar período letivo
-                </a>
-            </p>
-
 
             @if (count($schoolterms) > 0)
                 <div class="d-flex justify-content-center">

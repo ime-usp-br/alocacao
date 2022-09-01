@@ -4,8 +4,8 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
+<div id="layout_conteudo">
+    <div class="justify-content-center">
         <div class="col-md-12">
             <h1 class='text-center mb-5'><b>Relação completa</b></h1>
             <h2 class='text-center mb-5'>{!! $schoolterm->period . ' de ' . $schoolterm->year !!}</h2>

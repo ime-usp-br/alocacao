@@ -4,11 +4,11 @@
 
 @section('content')
     @parent
-    <div class="container">
-        <div class="row">
+    <div id="layout_conteudo">
+        <div class="justify-content-center">
             <div class="col-md-12">
-                <h1 class='h5 font-weight-bold my-3'>
-                    Editar usuário {{ $user->name }}
+                <h1 class='text-center'>
+                    Editar usuário
                 </h1>
 
                 <p class="alert alert-info rounded-0">

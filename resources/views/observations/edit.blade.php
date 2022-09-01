@@ -7,9 +7,7 @@
 <div class="container">
     <div class="row">
         <div class="col-md-12">
-            <h1 class='h5 font-weight-bold my-3'>
-                Editar Observação
-            </h1>
+            <h1 class='text-center'>Editar Observação</h1>
 
             <p class="alert alert-info rounded-0">
                 <b>Atenção:</b>

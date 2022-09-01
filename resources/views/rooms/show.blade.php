@@ -4,8 +4,8 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
+<div id="layout_conteudo">
+    <div class="justify-content-center">
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Sala {{$room->nome}}</h1>
 
@@ -46,7 +46,7 @@
 
 
             <p class="text-right">
-                <a  class="btn btn-primary"
+                <a  class="btn btn-outline-primary"
                     id="btn-allocateSchoolClass"
                     data-toggle="modal"
                     data-target="#allocateModal"
@@ -54,7 +54,7 @@
                     <i class="fas fa-plus-circle"></i>
                     Alocar Turma
                 </a>
-                <a  class="btn btn-primary"
+                <a  class="btn btn-outline-primary"
                     href="{{ route('rooms.index') }}"
                 >
                     <i class="fas fa-arrow-alt-circle-left"></i>

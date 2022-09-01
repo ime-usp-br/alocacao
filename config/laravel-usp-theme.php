@@ -1,40 +1,6 @@
 <?php
 
 $submenu = [
-    [
-        'text' => 'Usuários',
-        'url' => config('app.url') . '/users',
-        'can' => 'editar usuario',
-    ],
-    [
-        'text' => 'Períodos Letivos',
-        'url' => config('app.url') . '/schoolterms',
-        'can' => 'visualizar periodo letivo',
-    ],
-    [
-        'text' => 'Turmas Internas',
-        'url' => config('app.url') . '/schoolclasses',
-        'can' => 'visualizar turmas',
-    ],
-    [
-        'text' => 'Turmas Externas',
-        'url' => config('app.url') . '/schoolclasses/externals',
-        'can' => 'visualizar turmas externas',
-    ],
-    [
-        'text' => 'Dobradinhas',
-        'url' => config('app.url') . '/fusions',
-        'can' => 'visualizar dobradinhas',
-    ],
-    [
-        'text' => 'Salas',
-        'url' => config('app.url') . '/rooms',
-        'can' => 'visualizar salas',
-    ],
-    [
-        'text' => 'Observações',
-        'url' => config('app.url') . '/observations',
-    ],
 ];
 
 $menu = [
@@ -46,11 +12,6 @@ $menu = [
 
 $right_menu = [
     [
-        'text' => '<i class="fas fa-cog"></i>',
-        'title' => 'Configurações',
-        'submenu' => $submenu,
-        'align' => 'right',
-        'can' => "visualizar menu config",
     ],
 ];
 

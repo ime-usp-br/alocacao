@@ -4,8 +4,8 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
+<div id="layout_conteudo">
+    <div class="justify-content-center">
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Turmas de outras unidades</h1>
             @if($schoolterm)
@@ -20,7 +20,7 @@
                 enctype="multipart/form-data"
                 >
                     @csrf
-                    <button  class="btn btn-primary"
+                    <button  class="btn btn-outline-primary"
                         type="submit"
                     >
                         Tornar Interno
@@ -30,7 +30,7 @@
                 <form id="deleteForm" style="display: inline;"  method="post" action="{{ route('schoolclasses.destroyInBatch') }}" method="POST"
                     enctype="multipart/form-data">
                     @csrf
-                    <button class="btn btn-primary"
+                    <button class="btn btn-outline-primary"
                         type="submit"                        
                     >
                         Excluir

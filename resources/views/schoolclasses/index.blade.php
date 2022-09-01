@@ -4,8 +4,8 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
+<div id="layout_conteudo">
+    <div class="justify-content-center">
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Turmas Ministradas no IME</h1>
             @if($schoolterm)
@@ -18,7 +18,7 @@
 
             <div class="float-right" style="margin-bottom: 20px;">
                 <p class="text-right" style="display: inline;" >
-                    <a  class="btn btn-primary"
+                    <a  class="btn btn-outline-primary"
                         title="Cadastrar" 
                         href="{{ route('schoolclasses.create') }}"
                     >
@@ -26,7 +26,7 @@
                         Cadastrar
                     </a>
                     
-                    <a  class="btn btn-primary"
+                    <a  class="btn btn-outline-primary"
                         title="Importar" 
                         href="{{ route('schoolclasses.import') }}"
                     >
@@ -39,7 +39,7 @@
                 enctype="multipart/form-data"
                 >
                     @csrf
-                    <button  class="btn btn-primary"
+                    <button  class="btn btn-outline-primary"
                         type="submit"
                     >
                         Tornar Externo

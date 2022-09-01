@@ -1,19 +1,19 @@
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-5 text-lg-right">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-sm-2  text-sm-right" style="min-width:150px">
         <label for="year">Ano *</label>
     </div>
-    <div class="col-12 col-md-2">
+    <div class="col-sm-2" style="min-width:150px">
         <input class="custom-form-control" type="text" name="year" id="year"
             value='{{ $periodo->year ?? ""}}'
         />
     </div>
 </div>
 
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-5 text-lg-right">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-sm-2  text-sm-right" style="min-width:150px">
         <label for="period">Período *</label>
     </div>
-    <div class="col-12 col-md-2">
+    <div class="col-sm-2" style="min-width:150px">
         <select class="custom-form-control" type="text" name="period"
             id="period"
         >
@@ -29,14 +29,15 @@
     </div>
 </div>
 
-<div class="row">
-    <div class="col-4 d-none d-lg-block"></div>
-    <div class="col-md-12 col-lg-6">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-sm-6 text-center text-sm-right my-1">
         <button type="submit" class="btn btn-outline-dark">
             {{ $buttonText }}
         </button>
+    </div>
+    <div class="col-sm-6 text-center text-sm-left my-1">
         <a class="btn btn-outline-dark"
-            href="{{ route('schoolterms.index') }}"
+        href="{{ route('schoolterms.index') }}"
         >
             Cancelar
         </a>

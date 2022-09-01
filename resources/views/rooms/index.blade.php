@@ -4,8 +4,8 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
+<div id="layout_conteudo">
+    <div class="justify-content-center">
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Salas</h1>
 
@@ -21,7 +21,7 @@
                             enctype="multipart/form-data"
                             >
                                 @csrf
-                                <button  class="btn btn-primary"
+                                <button  class="btn btn-outline-primary"
                                     id="btn-report"
                                     type="submit"
                                 >
@@ -35,7 +35,7 @@
                             >
                                 @method('patch')
                                 @csrf
-                                <button  class="btn btn-primary"
+                                <button  class="btn btn-outline-primary"
                                     id="btn-distributes"
                                     type="submit"
                                     onclick="return confirm('Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!')" 
@@ -49,7 +49,7 @@
                             >
                                 @method('patch')
                                 @csrf
-                                <button  class="btn btn-primary"
+                                <button  class="btn btn-outline-primary"
                                     id="btn-empty"
                                     type="submit"
                                     onclick="return confirm('Você tem certeza? Esvaziar as salas irá desfazer a distribuição atual!')" 
@@ -62,7 +62,7 @@
                             enctype="multipart/form-data"
                             >
                                 @csrf
-                                <button  class="btn btn-primary"
+                                <button  class="btn btn-outline-primary"
                                     id="btn-reservation"
                                     type="submit"
                                     onclick="return confirm('Você tem certeza? Lembre-se de conferir a distribuição das turmas nas salas antes de enviar as reservas para o Urano!')" 

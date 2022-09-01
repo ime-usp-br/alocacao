@@ -97,3 +97,52 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+.ui-menu .ui-menu-item-wrapper{
+  padding:5px;
+}
+
+.ui-menu .ui-state-active{
+  background-color:#D6D6D6;
+  border-width:0px;
+  border-color:#7D7D7D;
+  border-style:solid;
+  font:normal 10px Verdana;
+  color:#000000;
+  text-decoration:none;	
+  cursor:pointer;cursor:hand;
+}
+
+#layout_menu {
+	width: 170px;
+	float: left;
+	padding-top: 10px;
+}
+
+#layout_conteudo {
+  padding-left: 181px;
+  padding-top: 10px;
+}
+
+#my_web_cabecalho {
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+	font-size: 10px;
+	text-align: left;
+	width: 90%;
+	border-bottom: solid;
+	border-bottom-width: thin;
+	border-bottom-color: #666666;
+	padding-bottom: 4px;
+	margin-bottom: 4px;
+}
+
+#my_web_cabecalho_descricao {
+	font-family: Verdana, Geneva, Arial, Helvetica, sans-serif;
+	font-size: 10px;
+	padding-bottom: 10px;
+}
+
+.ui-datepicker-trigger{
+  right: 25px;
+  position: relative;}
+

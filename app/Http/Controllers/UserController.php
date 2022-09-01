@@ -105,4 +105,13 @@ class UserController extends Controller
     {
         //
     }
+
+    public function loginas()
+    {
+        if(!Gate::allows('editar usuario')){
+            abort(403);
+        }
+        
+        return view("users.loginas");
+    }
 }

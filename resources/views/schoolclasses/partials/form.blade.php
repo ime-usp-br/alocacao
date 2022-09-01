@@ -1,48 +1,52 @@
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label for="codtur">Código da Turma {{ $buttonText === "Cadastrar" ? "*":"" }}</label>
     </div>
-    <div class="col-12 col-md-5">
-        <input class="custom-form-control" type="text" name="codtur" id="codtur"
+    <div class="col-12 col-lg-6">
+        <input style="max-width:200px" class="custom-form-control" type="text" name="codtur" id="codtur"
             value="{{ old('codtur') ?? $turma->codtur ?? ''}}"" {{ $buttonText === "Editar" ? "disabled":"" }}
         />
     </div>
 </div>
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label for="coddis">Código da Disciplina {{ $buttonText === "Cadastrar" ? "*":"" }}</label>
     </div>
-    <div class="col-12 col-md-5">
-        <input class="custom-form-control" type="text" name="coddis" id="coddis"
+    <div class="col-12 col-lg-6">
+        <input style="max-width:200px"  class="custom-form-control" type="text" name="coddis" id="coddis"
             value="{{ old('coddis') ?? $turma->coddis ?? ''}}" {{ $buttonText === "Editar" ? "disabled":"" }}
         />
     </div>
 </div>
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label for="nomdis">Nome da Disciplina {{ $buttonText === "Cadastrar" ? "*":"" }}</label>
     </div>
-    <div class="col-12 col-md-5">
-        <input class="custom-form-control" type="text" name="nomdis" id="nomdis"
+    <div class="col-12 col-lg-6">
+        <input style="min-width:300px;max-width:400px;"  class="custom-form-control" type="text" name="nomdis" id="nomdis"
             value="{{ old('nomdis') ?? $turma->nomdis ?? ''}}" {{ $buttonText === "Editar" ? "disabled":"" }}
         />
     </div>
 </div>
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label for="tiptur">Tipo da Turma {{ $buttonText === "Cadastrar" ? "*":"" }}</label>
     </div>
-    <div class="col-12 col-md-5">
-        <input class="custom-form-control" type="text" name="tiptur" id="tiptur"
+    <div class="col-12 col-lg-6">
+        <input style="max-width:200px" class="custom-form-control" type="text" name="tiptur" id="tiptur"
             value="{{ old('tiptur') ?? $turma->tiptur ?? ''}}" {{ $buttonText === "Editar" ? "disabled":"" }}
         />
     </div>
 </div>
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label >Horários</label>
     </div>
-    <div class="col-12 col-md-5">
+    <div class="col-12 col-lg-6">
         <span id="count-classSchedule" value=0>
         @foreach($turma->classschedules as $horario)
             <div id="horario-{{ $horario->id }}">
@@ -80,11 +84,11 @@
     </div>
 </div>
 
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label >Prof(a)</label>
     </div>
-    <div class="col-12 col-md-5">
+    <div class="col-12 col-lg-6">
         @foreach($turma->instructors as $instrutor)
             <div id="instrutor-{{ $instrutor->id }}">
                 <input id="instrutores[{{$instrutor->id}}][codpes]" name="instrutores[{{$instrutor->id}}][codpes]" type="hidden" value="{{ $instrutor->codpes }}">
@@ -119,26 +123,26 @@
     </div>
 </div>
 
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label for="dtainitur">Início *</label>
     </div>
 
-    <div class="col-12 col-md-5">
-        <input class="custom-form-control custom-datepicker"
+    <div class="col-12 col-lg-6">
+        <input style="max-width:200px" class="custom-form-control custom-datepicker"
             type="text" name="dtainitur" id="dtainitur" autocomplete="off"
             value="{{ old('dtainitur') ?? $turma->dtainitur ?? ''}}"
         />
     </div>
 </div>
 
-<div class="row custom-form-group align-items-center">
-    <div class="col-12 col-lg-4 text-lg-right">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right">
         <label for="dtafimtur">Fim *</label>
     </div>
 
-    <div class="col-12 col-md-5">
-        <input class="custom-form-control custom-datepicker"
+    <div class="col-12 col-lg-6">
+        <input style="max-width:200px" class="custom-form-control custom-datepicker"
             type="text" name="dtafimtur" id="dtafimtur" autocomplete="off"
             value="{{ old('dtafimtur') ?? $turma->dtafimtur ?? ''}}"
         />
@@ -146,12 +150,14 @@
 </div>
 
 
-<div class="row">
-    <div class="col-4 d-none d-lg-block"></div>
-    <div class="col-md-12 col-lg-6">
+<div class="row custom-form-group justify-content-center">
+    <div class="col-12 col-lg-6 text-lg-right my-1">
         <button type="submit" class="btn btn-outline-dark">
             {{ $buttonText }}
         </button>
+    </div>
+
+    <div class="col-12 col-lg-6 my-1">
         <a class="btn btn-outline-dark"
             href="{{ route('schoolclasses.index') }}"
         >

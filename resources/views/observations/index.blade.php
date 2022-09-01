@@ -4,30 +4,14 @@
 
 @section('content')
   @parent 
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-12">
+<div id="layout_conteudo">
+    <div class="row">
+        <div class="col-12">
             <h1 class='text-center mb-5'>Observações</h1>
             @if($schoolterm)
                 <h4 class='text-center mb-5'>{{ $schoolterm->period . ' de ' . $schoolterm->year }}</h4>
             @endif
-
-            <div id="progressbar-div">
-            </div>
-            <br>
-
-            <div class="float-right" style="margin-bottom: 20px;">
-                <p class="text-right" style="display: inline;" >
-                    <a  class="btn btn-primary"
-                        title="Cadastrar" 
-                        href="{{ route('observations.create') }}"
-                    >
-                        <i class="fas fa-plus-circle"></i>
-                        Cadastrar
-                    </a>
-                </p>
-            </div>
-
+            
             @if (count($observations) > 0)
                 <table class="table table-bordered table-striped table-hover" style="font-size:12px;">
                     <tr>
@@ -37,6 +21,9 @@
                     </tr>
 
                     @foreach($observations as $observation)
+
+                    <div class="row justify-content-center">
+                        <div class="col-8">
                         <tr style="font-size:12px;">
                             <td>{{ $observation->title }}</td>
                             <td>{{ $observation->body }}</td>

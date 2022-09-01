@@ -29,8 +29,9 @@ Route::get('/', function () {
         }
     }
     return view('main');
-});
+})->name("home");
 
+Route::get('/users/loginas', [UserController::class, 'loginas'])->name("users.loginas");
 Route::resource('users', UserController::class);
 
 Route::resource('schoolterms', SchoolTermController::class);
