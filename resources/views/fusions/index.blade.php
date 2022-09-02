@@ -35,10 +35,19 @@
                                 @if($x == 0)
                                     <td rowspan="{{count($fusion->schoolclasses)}}" style="white-space: nowrap;
                                                                                     vertical-align: middle;">
-                                        @foreach(range(0, count($fusion->schoolclasses)-1) as $y)
-                                                {{$fusion->schoolclasses[$y]->coddis}}     
-                                                {{$y != count($fusion->schoolclasses)-1 ? "/" : ""}}    
-                                        @endforeach
+                                        @php
+                                            $nomdis = $fusion->schoolclasses->pluck("nomdis")->unique()->toArray();
+                                        @endphp
+                                        @if(count($nomdis)==1 and in_array("Trabalho de Formatura", $nomdis))
+                                            MAP20XX
+                                        @elseif(count($nomdis)==1 and in_array("Noções de Estatística", $nomdis))
+                                            {{ $fusion->master->coddis }}
+                                        @else
+                                            @foreach(range(0, count($fusion->schoolclasses)-1) as $y)
+                                                    {{$fusion->schoolclasses[$y]->coddis}}     
+                                                    {{$y != count($fusion->schoolclasses)-1 ? "/" : ""}}    
+                                            @endforeach
+                                        @endif
                                     </td>
                                     <td rowspan="{{count($fusion->schoolclasses)}}" style="white-space: nowrap;
                                                                                     vertical-align: middle;">
@@ -53,10 +62,10 @@
                                         @endforeach
                                     </td>
                                 @endif
-                                <td>{{ $fusion->schoolclasses[$x]->codtur }}</td>
-                                <td>{{ $fusion->schoolclasses[$x]->coddis }}</td>
-                                <td>{{ $fusion->schoolclasses[$x]->nomdis }}</td>
-                                <td>{{ $fusion->schoolclasses[$x]->tiptur }}</td>
+                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->codtur }}</td>
+                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->coddis }}</td>
+                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->nomdis }}</td>
+                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->tiptur }}</td>
                                 <td>
                                     <form method="get"  action="{{ route('fusions.disjoint', $fusion->schoolclasses[$x]) }}" style="display: inline;">
                                         @csrf

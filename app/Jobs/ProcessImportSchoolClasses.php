@@ -58,14 +58,13 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
         $n = 0;
 
         foreach($turmas as $turma){
-            if ((($turma['tiptur'] == "Pós Graduação") or 
+            if (($turma['tiptur'] == "Pós Graduação") or 
                 ($turma['tiptur'] == "Graduação" and substr($turma["codtur"], -2, 2) >= "40") or
                 ($turma['coddis'] == "MAT0112" and substr($turma["codtur"], -2, 2) == "34") or
                 ($turma['coddis'] == "MAT0111" and substr($turma["codtur"], -2, 2) == "34") or
                 ($turma['coddis'] == "MAT0121" and substr($turma["codtur"], -2, 2) == "34") or
                 ($turma['tiptur'] == "Graduação" and $turma["coddis"] == "MAE0116") or
-                ($turma["externa"])) and
-                ($turma["nomdis"] != "Trabalho de Formatura")){
+                ($turma["externa"])){
                 if($turma['class_schedules']){
                     $schoolclass = SchoolClass::where(array_intersect_key($turma, array_flip(array('codtur', 'coddis'))))->first();
         

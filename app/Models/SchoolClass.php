@@ -112,7 +112,7 @@ class SchoolClass extends Model
         $fusion = false;
         $schoolclasses = SchoolClass::whereBelongsTo($this->schoolterm)->whereHas("instructors", function($query){
             $query->whereIn("id",$this->instructors()->pluck("id")->toArray());
-        })->where("id","!=",$this->id)->get();
+        })->where("id","!=",$this->id)->where("externa", false)->get();
 
         foreach($schoolclasses as $sc2){
             if($this->isInConflict($sc2) and $this->instructors->diff($sc2->instructors)->isEmpty() and $sc2->instructors->diff($this->instructors)->isEmpty()){
@@ -208,24 +208,24 @@ class SchoolClass extends Model
     {
         $disciplinas = SELF::getGrdDisciplinesFromReplicadoByInstitute(env("UNIDADE"));
 
-        $periodo = [
-            '1° Semestre' => '1',
-            '2° Semestre' => '2',
-        ];
         $schoolclasses = [];
-        $codtur = $schoolTerm->year.$periodo[$schoolTerm->period] . '%';
+
+        $dtafimtur = $schoolTerm->period == "1° Semestre" ? $schoolTerm->year."-06-01" : $schoolTerm->year."-11-01";
 
         foreach($disciplinas as $disc){
             $coddis = $disc['coddis'];
+
+            $codtur = $schoolTerm->year . ($schoolTerm->period == "1° Semestre" ? "1%" : "2%");
 
             $query = " SELECT T.codtur, T.coddis, D.nomdis, T.dtainitur, T.dtafimtur, DC.pfxdisval";
             $query .= " FROM TURMAGR AS T, DISCIPLINAGR AS D, DISCIPGRCODIGO AS DC";
             $query .= " WHERE (T.coddis = :coddis)";
             $query .= " AND T.codtur LIKE :codtur";
             $query .= " AND T.statur = :statur";
-            $query .= " AND T.verdis = (SELECT MAX(T.verdis) 
-                                        FROM TURMAGR AS T 
-                                        WHERE T.coddis = :coddis)";
+            $query .= " AND T.verdis = (SELECT MAX(T2.verdis) 
+                                        FROM TURMAGR AS T2 
+                                        WHERE T2.coddis = :coddis 
+                                        AND T2.statur = :statur)";
             $query .= " AND D.coddis = T.coddis";
             $query .= " AND D.verdis = T.verdis";
             $query .= " AND DC.coddis = T.coddis";
@@ -248,8 +248,49 @@ class SchoolClass extends Model
                 unset($turmas[$key]['pfxdisval']);
 
             }
+
+            $schoolclasses = array_merge($schoolclasses, $turmas);
+
+            $codtur = $schoolTerm->period == "1° Semestre" ? ($schoolTerm->year-1)."2%" : $schoolTerm->year."1%";
+
+            $query = " SELECT T.codtur, T.coddis, D.nomdis, T.dtainitur, T.dtafimtur";
+            $query .= " FROM TURMAGR AS T, DISCIPLINAGR AS D, DISCIPGRCODIGO AS DC";
+            $query .= " WHERE (T.coddis = :coddis)";
+            $query .= " AND T.codtur LIKE :codtur";
+            $query .= " AND T.statur = :statur";
+            $query .= " AND T.verdis = (SELECT MAX(T2.verdis) 
+                                        FROM TURMAGR AS T2 
+                                        WHERE T2.coddis = :coddis 
+                                        AND T2.statur = :statur
+                                        AND T2.codtur LIKE :codtur)";
+            $query .= " AND T.dtafimtur > :dtafimtur";
+            $query .= " AND D.coddis = T.coddis";
+            $query .= " AND D.verdis = T.verdis";
+            $query .= " AND DC.coddis = T.coddis";
+            $param = [
+                'coddis' => $coddis,
+                'codtur' => $codtur,
+                'statur' => "A",
+                'dtafimtur' => $dtafimtur,
+            ];
+
+            $turmas = DB::fetchAll($query, $param);
+            
+            foreach($turmas as $key => $turma){
+                $turmas[$key]['class_schedules'] = ClassSchedule::getFromReplicadoBySchoolClass($turma);
+                $turmas[$key]['instructors'] = Instructor::getFromReplicadoBySchoolClass($turma);
+                $turmas[$key]['school_term_id'] = $schoolTerm->id;
+                $turmas[$key]['dtainitur'] = Carbon::createFromFormat("Y-m-d H:i:s", $turma["dtainitur"])->format("d/m/Y");
+                $turmas[$key]['dtafimtur'] = Carbon::createFromFormat("Y-m-d H:i:s", $turma["dtafimtur"])->format("d/m/Y");
+                $turmas[$key]['tiptur'] = "Graduação";
+                $turmas[$key]['externa'] = false;
+
+            }
+            
             $schoolclasses = array_merge($schoolclasses, $turmas);
         }
+
+        $codtur = $schoolTerm->year . ($schoolTerm->period == "1° Semestre" ? "1%" : "2%");
 
         foreach(CourseInformation::$codtur_by_course as $sufixo_codtur=>$course){
             foreach(SELF::getExternalDisciplinesFromReplicadoByCourse($course) as $coddis){
@@ -258,9 +299,10 @@ class SchoolClass extends Model
                 $query .= " WHERE (T.coddis = :coddis)";
                 $query .= " AND T.codtur LIKE :codtur";
                 $query .= " AND T.statur = :statur";
-                $query .= " AND T.verdis = (SELECT MAX(T.verdis) 
-                                            FROM TURMAGR AS T 
-                                            WHERE T.coddis = :coddis)";
+                $query .= " AND T.verdis = (SELECT MAX(T2.verdis) 
+                                            FROM TURMAGR AS T2 
+                                            WHERE T2.coddis = :coddis
+                                            AND T2.statur = :statur)";
                 $query .= " AND D.coddis = T.coddis";
                 $query .= " AND D.verdis = T.verdis";
                 $query .= " AND DC.coddis = T.coddis";
@@ -323,7 +365,7 @@ class SchoolClass extends Model
             $turmas[$key]['dtainitur'] = Carbon::createFromFormat("Y-m-d H:i:s", $turma["dtainitur"])->format("d/m/Y");
             $turmas[$key]['dtafimtur'] = Carbon::createFromFormat("Y-m-d H:i:s", $turma["dtafimtur"])->format("d/m/Y");
             $turmas[$key]['tiptur'] = "Pós Graduação";
-            $turmas[$key]['codtur'] = $schoolTerm->year . $periodo[$schoolTerm->period] . $turmas[$key]['numseqdis'] . $turmas[$key]['numofe'];
+            $turmas[$key]['codtur'] = $schoolTerm->year . ($schoolTerm->period == "1° Semestre" ? "1" : "2") . $turmas[$key]['numseqdis'] . $turmas[$key]['numofe'];
             $turmas[$key]['externa'] = false;
             unset($turmas[$key]['numseqdis']);
             unset($turmas[$key]['numofe']);

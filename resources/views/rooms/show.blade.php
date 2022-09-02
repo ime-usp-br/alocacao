@@ -105,13 +105,20 @@
                                                         @php
                                                             $dobradinha = "";
                                                             $label = "";
+                                                            $nomdis = $turma->fusion->schoolclasses->pluck("nomdis")->unique()->toArray();
                                                             if($turma->fusion->schoolclasses->pluck("coddis")->unique()->count() == 1){
                                                                 $dobradinha .= $turma->fusion->schoolclasses[0]->coddis." ";
                                                                 $label .= $turma->fusion->schoolclasses[0]->nomdis;
                                                                 foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
                                                                     $dobradinha .= "T.".substr($turma->fusion->schoolclasses[$y]->codtur, -2, 2);
                                                                     $dobradinha .= $y != count($turma->fusion->schoolclasses)-1 ? "/" : "";
-
+                                                                }
+                                                            }elseif(count($nomdis)==1 and in_array("Trabalho de Formatura", $nomdis)){
+                                                                $dobradinha .= "MAP20XX";
+                                                                $label .= "Trabalho de Formatura\n";
+                                                                foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
+                                                                    $label .= $turma->fusion->schoolclasses[$y]->coddis." T. ".$turma->fusion->schoolclasses[$y]->codtur;
+                                                                    $label .= $y != count($turma->fusion->schoolclasses)-1 ? "\n" : "";
                                                                 }
                                                             }elseif($turma->fusion->schoolclasses()->where("tiptur","Graduação")->get()->count() == $turma->fusion->schoolclasses->count()){
                                                                 foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
@@ -247,12 +254,17 @@
                                 @if($x == 0)
                                     <td rowspan="{{count($fusion->schoolclasses)}}" style="white-space: nowrap;
                                                                                     vertical-align: middle;">
+                                        @php
+                                            $nomdis = $fusion->schoolclasses->pluck("nomdis")->unique()->toArray();
+                                        @endphp
                                         @if($fusion->schoolclasses->pluck("coddis")->unique()->count()==1)
                                             {{ $fusion->master->coddis }}
                                             @foreach(range(0, count($fusion->schoolclasses)-1) as $y)
                                                     {{ " T.".substr($fusion->schoolclasses[$y]->codtur,-2,2) }}     
                                                     {{ $y != count($fusion->schoolclasses)-1 ? "/" : "" }}    
                                             @endforeach
+                                        @elseif(count($nomdis)==1 and in_array("Trabalho de Formatura", $nomdis))
+                                            MAP20XX
                                         @else
                                             @foreach(range(0, count($fusion->schoolclasses)-1) as $y)
                                                     {{ $fusion->schoolclasses[$y]->coddis }}     
