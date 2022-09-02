@@ -24,8 +24,8 @@ class UpdateObservationRequest extends FormRequest
     public function rules()
     {
         $rules = [
-            'title' => 'required|max:100',
-            'body' => 'required|max:512',
+            'title' => 'required|max:256',
+            'body' => 'required|max:8192',
         ];
 
         return $rules;

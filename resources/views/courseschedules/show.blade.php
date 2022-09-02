@@ -31,9 +31,8 @@
                 <div class="card my-3">
                     <div class="card-body">
                         <h3 class='card-title' style="color:blue">{!! $observation->title !!}</h3>
-                        @foreach(explode("\r\n", $observation->body) as $line)
-                            <p class="card-text" style="color:blue">{!! $line !!} </p>
-                        @endforeach
+                        <br>
+                        {!! $observation->body !!}
                     </div>
                 </div>
             @endforeach

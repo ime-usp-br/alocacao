@@ -4,7 +4,7 @@
 
 @section('content')
   @parent 
-<div class="container">
+<div class="container-fluid">
     <div class="row">
         <div class="col-md-12">
             <h1 class='text-center'>Cadastrar Observação</h1>
@@ -24,4 +24,16 @@
         </div>
     </div>
 </div>
+@endsection
+
+
+@section('javascripts_bottom')
+ @parent
+<script>
+    tinymce.init({
+    selector: '#bodyobservation',
+    plugins: 'link,code',
+    link_default_target: '_blank'
+    });
+</script>
 @endsection
