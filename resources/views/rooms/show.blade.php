@@ -137,24 +137,22 @@
                                                             }
                                                     
                                                         @endphp
-                                                        <a class="text-dark" target="_blank"
-                                                            title="{{ $label }}"
-                                                            href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                                        >
-                                                            {{$dobradinha}}
-                                                        </a>
-                                                                                                                  
+                                                        {{$dobradinha}}                                                                                                                  
                                                     @else
-                                                        @php
-                                                            $label = $turma->nomdis;
-                                                            $label .= "\n". ($turma->estmtr ? "Número estimado de matriculados ".$turma->estmtr : "Não foram encontrados registros anteriores para calcular uma estimativa de matriculados");
-                                                        @endphp
-                                                        <a class="text-dark" target="_blank"
-                                                            title="{{ $label }}"
-                                                            href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                                        >
-                                                            {{ $turma->coddis.($turma->tiptur=="Graduação" ? " T.".substr($turma->codtur, -2, 2) : "") }}
-                                                        </a>
+                                                        @if($turma->tiptur=="Graduação")
+                                                            @php
+                                                                $label = $turma->nomdis;
+                                                                $label .= "\n". ($turma->estmtr ? "Número estimado de matriculados ".$turma->estmtr : "Não foram encontrados registros anteriores para calcular uma estimativa de matriculados");
+                                                            @endphp
+                                                            <a class="text-dark" target="_blank"
+                                                                title="{{ $label }}"
+                                                                href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                                            >
+                                                                {{ $turma->coddis." T.".substr($turma->codtur, -2, 2) }}
+                                                            </a>
+                                                        @else
+                                                            {{ $turma->coddis }}
+                                                        @endif
                                                         
                                                     @endif
                                                     <a class="text-dark text-decoration-none"
@@ -210,12 +208,16 @@
                         <tr style="font-size:12px;">
                             <td>{{ $turma->coddis }}</td>
                             <td>{{ $turma->codtur }}</td>
-                            <td>                                
-                                <a class="text-dark" target="_blank"
-                                    href="{{ $turma->tiptur=='Graduação' ? 'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis : ''}}"
-                                >
+                            <td>        
+                                @if($turma->tiptur=='Graduação')                   
+                                    <a class="text-dark" target="_blank"
+                                        href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                    >
+                                        {{ $turma->nomdis }}
+                                    </a>
+                                @else
                                     {{ $turma->nomdis }}
-                                </a>
+                                @endif
                             </td>
                             <td>{{ $turma->tiptur }}</td>
                             <td style="{{ $room->isCompatible($turma, $ignore_block=true, $ignore_estmtr=true) ? 'white-space: nowrap;color:green;' : 'white-space: nowrap;color:red' }}">

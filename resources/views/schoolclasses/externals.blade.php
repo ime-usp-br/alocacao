@@ -60,12 +60,16 @@
                         <tr style="font-size:12px;">
                             <td>{{ $turma->coddis }}</td>
                             <td>{{ $turma->codtur }}</td>
-                            <td>                                
-                                <a class="text-dark" target="_blank"
-                                    href="{{ $turma->tiptur=='Graduação' ? 'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis : ''}}"
-                                >
+                            <td>        
+                                @if($turma->tiptur=='Graduação')                   
+                                    <a class="text-dark" target="_blank"
+                                        href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                    >
+                                        {{ $turma->nomdis }}
+                                    </a>
+                                @else
                                     {{ $turma->nomdis }}
-                                </a>
+                                @endif
                             </td>
                             <td>{{ $turma->tiptur }}</td>
                             <td style="white-space: nowrap;">
