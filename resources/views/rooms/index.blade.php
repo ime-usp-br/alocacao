@@ -150,6 +150,7 @@
                                         data-toggle="tooltip" data-placement="top"
                                         title="{{$label}}"
                                         href="{{ route('rooms.show', $sala) }}"
+                                        target="_blank"
                                     >Ver Sala
                                     </a>
                                 </td>
@@ -162,6 +163,7 @@
                                     <a  class="btn btn-outline-dark btn-sm"
                                         data-toggle="tooltip" data-placement="top"
                                         href="{{ route('rooms.showFreeTime',) }}"
+                                        target="_blank"
                                     >Ver Salas
                                     </a>
                                 </td>
