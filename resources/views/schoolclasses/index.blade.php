@@ -50,8 +50,8 @@
             @if (count($turmas) > 0)
                 <table class="table table-bordered table-striped table-hover" style="font-size:12px;">
                     <tr>
-                        <th>Código da Turma</th>
                         <th>Código da Disciplina</th>
+                        <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
                         <th>Horários</th>
@@ -64,8 +64,8 @@
 
                     @foreach($turmas as $turma)
                         <tr style="font-size:12px;">
-                            <td>{{ $turma->codtur }}</td>
                             <td>{{ $turma->coddis }}</td>
+                            <td>{{ $turma->codtur }}</td>
                             <td>                                
                                 <a class="text-dark" target="_blank"
                                     href="{{ $turma->tiptur=='Graduação' ? 'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis : ''}}"

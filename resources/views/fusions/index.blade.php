@@ -22,8 +22,8 @@
                         <th>Nome da Dobradinha</th>
                         <th>Horários</th>
                         <th>Professor(es)</th>
-                        <th>Código da Turma</th>
                         <th>Código da Disciplina</th>
+                        <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
                         <th>Desmembrar<br></th>
@@ -62,8 +62,8 @@
                                         @endforeach
                                     </td>
                                 @endif
-                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->codtur }}</td>
                                 <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->coddis }}</td>
+                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->codtur }}</td>
                                 <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->nomdis }}</td>
                                 <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->tiptur }}</td>
                                 <td>

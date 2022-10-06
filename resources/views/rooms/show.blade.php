@@ -198,8 +198,8 @@
 
                 <table class="table table-bordered table-striped table-hover" style="font-size:12px;">
                     <tr>
-                        <th>Código da Turma</th>
                         <th>Código da Disciplina</th>
+                        <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
                         <th>Horários</th>
@@ -208,8 +208,8 @@
 
                     @foreach($turmas_nao_alocadas as $turma)
                         <tr style="font-size:12px;">
-                            <td>{{ $turma->codtur }}</td>
                             <td>{{ $turma->coddis }}</td>
+                            <td>{{ $turma->codtur }}</td>
                             <td>                                
                                 <a class="text-dark" target="_blank"
                                     href="{{ $turma->tiptur=='Graduação' ? 'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis : ''}}"
@@ -240,8 +240,8 @@
                 <table class="table table-bordered" style="font-size:12px;">
                     <tr style="background-color:#F5F5F5">
                         <th>Nome da Dobradinha</th>
-                        <th>Código da Turma</th>
                         <th>Código da Disciplina</th>
+                        <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
                         <th>Horários</th>
@@ -273,8 +273,8 @@
                                         @endif
                                     </td>
                                 @endif
-                                <td>{{ $fusion->schoolclasses[$x]->codtur }}</td>
                                 <td>{{ $fusion->schoolclasses[$x]->coddis }}</td>
+                                <td>{{ $fusion->schoolclasses[$x]->codtur }}</td>
                                 <td>
                                     @if($fusion->schoolclasses[$x]->tiptur == "Graduação")                    
                                         <a class="text-dark" target="_blank"
