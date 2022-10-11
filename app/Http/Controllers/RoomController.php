@@ -205,42 +205,48 @@ class RoomController extends Controller
 
         $validated = $request->validated();
         
-        $salas_diposniveis = $validated["rooms_id"];
+        $salas_disponiveis = $validated["rooms_id"];
 
         $schoolterm = SchoolTerm::getLatest();
 
-        foreach(CourseInformation::$codtur_by_course as $sufixo_codtur=>$course){
-            $turmas = SchoolClass::whereBelongsTo($schoolterm)->whereHas("courseinformations", function($query)use($course){
-                                        $query->whereIn("numsemidl",[1,2])->where("tipobg","O")->where("nomcur", $course["nomcur"]);
-                                    })->where("codtur","like","%".$sufixo_codtur)->get();
-                                    
-            $ps = Priority::whereHas("schoolclass",function($query)use($turmas){
-                                $query->whereIn("id",$turmas->pluck("id")->toArray());
-                            })->with("room")->get();
+        $semestres = $schoolterm->period == "1° Semestre" ? [1] : [2];// Se quiser que em outros semestres os cursos fiquem na mesma sala add aqui 
 
-            $salas = [];
-            foreach($ps->groupBy("room.id") as $sala_id=>$p){
-                $salas[$p->sum("priority")] = Room::find($sala_id);
-            }
-            krsort($salas);
-            
-            $salas = $salas ? $salas : Room::all()->sortby("assentos");
+        foreach($semestres as $semestre){
+            foreach(CourseInformation::$codtur_by_course as $sufixo_codtur=>$course){
+                $turmas = SchoolClass::whereBelongsTo($schoolterm)->whereHas("courseinformations", function($query)use($course, $semestre){
+                                            $query->where("numsemidl",$semestre)->where("tipobg","O")->where("nomcur", $course["nomcur"])->where("perhab", $course["perhab"]);
+                                        })->where("codtur","like","%".$sufixo_codtur)->where("externa", false)->get();
+                if($turmas->count() > 1){
+                    $ps = Priority::whereHas("schoolclass",function($query)use($turmas){
+                                        $query->whereIn("id",$turmas->pluck("id")->toArray());
+                                    })->with("room")->get();
+        
+                    $salas = [];
+                    foreach($ps->groupBy("room.id") as $sala_id=>$p){
+                        $salas[$p->sum("priority")] = Room::find($sala_id);
+                    }
+                    krsort($salas);
+                    foreach(Room::whereNotIn("id", array_column($salas,"id"))->get()->sortby("assentos") as $room){
+                        array_push($salas, $room);
+                    }
 
-            $alocado = false;
-            foreach($salas as $room){
-                if(!$alocado){
-                    if(in_array($room->id, $salas_diposniveis)){
-                        $conflito = false;
-                        foreach($turmas as $turma){
-                            if(!$room->isCompatible($turma)){
-                                $conflito = true;
+                    $alocado = false;
+                    foreach($salas as $room){
+                        if(!$alocado){
+                            if(in_array($room->id, $salas_disponiveis)){
+                                $conflito = false;
+                                foreach($turmas as $turma){
+                                    if(!$room->isCompatible($turma)){
+                                        $conflito = true;
+                                    }
+                                }
+                                if(!$conflito){
+                                    foreach($turmas as $turma){
+                                        $room->schoolclasses()->save($turma);
+                                    }
+                                    $alocado = true;
+                                }
                             }
-                        }
-                        if(!$conflito){
-                            foreach($turmas as $turma){
-                                $room->schoolclasses()->save($turma);
-                            }
-                            $alocado = true;
                         }
                     }
                 }
@@ -253,7 +259,7 @@ class RoomController extends Controller
         foreach($prioridades as $prioridade){
             $t1 = $prioridade->schoolclass;
             $room = $prioridade->room;
-            if(in_array($room->id, $salas_diposniveis)){
+            if(in_array($room->id, $salas_disponiveis)){
                 if(!$t1->room()->exists() and $t1->coddis!="MAE0116"){
                     if($t1->fusion()->exists()){
                         if($t1->fusion->master->id == $t1->id){
@@ -272,7 +278,7 @@ class RoomController extends Controller
                                 ->where("tiptur","Pós Graduação")
                                 ->whereDoesntHave("room")->get();
         foreach($turmas as $t1){
-            foreach(Room::whereIn("id", $salas_diposniveis)->get()->shuffle() as $sala){
+            foreach(Room::whereIn("id", $salas_disponiveis)->get()->shuffle() as $sala){
                 if(!$t1->room()->exists() and !$t1->fusion()->exists()){
                     if($sala->isCompatible($t1)){
                         $sala->schoolclasses()->save($t1);
@@ -287,7 +293,7 @@ class RoomController extends Controller
                                 ->whereDoesntHave("room")
                                 ->get()->sortBy("estmtr");
         foreach($turmas as $t1){
-            foreach(Room::whereIn("id", $salas_diposniveis)->get()->sortby("assentos") as $sala){
+            foreach(Room::whereIn("id", $salas_disponiveis)->get()->sortby("assentos") as $sala){
                 if(!$t1->room()->exists() and $t1->coddis!="MAE0116"){
                     if($t1->fusion()->exists()){
                         if($t1->fusion->master->id == $t1->id){
