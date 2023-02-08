@@ -74,9 +74,8 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
                         $schoolclass->save();
                 
                         foreach($turma['instructors'] as $instructor){
-                            if($instructor){
-                                $schoolclass->instructors()->attach(Instructor::firstOrCreate(Instructor::getFromReplicadoByCodpes($instructor["codpes"])));
-                            }
+                            $docente = Instructor::getFromReplicadoByCodpes($instructor["codpes"]);
+                            $schoolclass->instructors()->attach(Instructor::updateOrCreate(["nompes"=>$docente["nompes"],"codpes"=>$docente["codpes"]],["codema"=>$docente["codema"]]));
                         }
             
                         foreach($turma['class_schedules'] as $classSchedule){
@@ -102,19 +101,29 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
                                 }
                             }
                         }
-
-                        foreach(CourseInformation::getFromReplicadoBySchoolClass($schoolclass) as $info){
-                            if(in_array($info["nomcur"],Course::all()->pluck("nomcur")->toArray())){
-                                CourseInformation::firstOrCreate($info)->schoolclasses()->save($schoolclass);
+                    }else{
+                        foreach($turma['instructors'] as $instructor){
+                            if(!in_array($instructor["codpes"], $schoolclass->instructors()->pluck("codpes")->toarray())){
+                                $docente = Instructor::getFromReplicadoByCodpes($instructor["codpes"]);
+                                $schoolclass->instructors()->attach(Instructor::updateOrCreate(["nompes"=>$docente["nompes"],"codpes"=>$docente["codpes"]],["codema"=>$docente["codema"]]));
                             }
                         }
-
-                        $schoolclass->calcEstimadedEnrollment();
-                        
-                        $schoolclass->save();
-
-                        $schoolclass->searchForFusion();
                     }
+
+                    foreach(CourseInformation::getFromReplicadoBySchoolClass($schoolclass) as $info){
+                        if(in_array($info["nomcur"],Course::all()->pluck("nomcur")->toArray())){
+                            $ci = CourseInformation::firstOrCreate($info);
+                            if(!$ci->schoolclasses->contains($schoolclass->id)){
+                                $ci->schoolclasses()->save($schoolclass);
+                            }
+                        }
+                    }
+
+                    $schoolclass->calcEstimadedEnrollment();
+                    
+                    $schoolclass->save();
+
+                    $schoolclass->searchForFusion();
                 }
             }
             $n += 1;
