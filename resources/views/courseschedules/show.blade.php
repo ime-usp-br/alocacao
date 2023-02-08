@@ -114,6 +114,7 @@
                                                         ->where("numsemidl",$semester-1)
                                                         ->where("nomcur",$course->nomcur)
                                                         ->where("perhab", $course->perhab)
+                                                        ->where("tipobg", "O")
                                                         ->whereIn("codhab", [1,4,$codhab])->exists();
                                                 @endphp
                                                 <a class="text-dark" target="_blank"
@@ -128,6 +129,7 @@
                                                     ->where("nomcur",$course->nomcur)
                                                     ->where("perhab", $course->perhab)
                                                     ->whereIn("codhab", [1,4,$codhab])
+                                                    ->where("tipobg", "O")
                                                     ->get()->toArray();
 
                                                 foreach($tipobg as $key=>$value){
@@ -194,13 +196,14 @@
                                                     @if(($turma->coddis == $turma2->coddis) and ($turma->instructors->diff($turma2->instructors)->isEmpty()) and ($turma2->instructors->diff($turma->instructors)->isEmpty()))
                                                         @php 
                                                             array_push($done, $turma2->id); 
-                                                            array_push($codturs, substr($turma2->codtur,-2,2)); 
+                                                            array_push($codturs, $turma2->codtur); 
                                                         @endphp
                                                     @endif
                                                 @endforeach
                                                 @php sort($codturs); @endphp
                                                 @foreach($codturs as $codtur)
-                                                    {!! "T.".$codtur !!}<br>
+                                                    {!! "T.".substr($codtur,-2,2) !!}
+                                                    <br>
                                                 @endforeach
                                             </td>
                                         </tr>

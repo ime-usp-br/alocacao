@@ -37,6 +37,20 @@ class SchoolClassController extends Controller
 
         $schoolterm = SchoolTerm::getLatest();
 
+        $validated = $request->validated();
+        
+        if($request->expectsJson()){
+            if(array_key_exists('coddis', $validated)){
+                $coddis = $validated['coddis'];
+
+                $turmas = $schoolterm ? SchoolClass::whereBelongsTo($schoolterm)->where("coddis", $coddis)->get() : [];
+                if($turmas){
+                    return response()->json($turmas);
+                }
+                return response()->json("");
+            }
+        }
+
         $turmas = $schoolterm ? SchoolClass::whereBelongsTo($schoolterm)->where("externa", "Não")->get() : [];
 
         return view('schoolclasses.index', compact(['turmas', 'schoolterm']));

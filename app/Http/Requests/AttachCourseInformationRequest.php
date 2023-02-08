@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class IndexSchoolClassRequest extends FormRequest
+class AttachCourseInformationRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -24,8 +24,13 @@ class IndexSchoolClassRequest extends FormRequest
     public function rules()
     {
         $rules = [
-            'periodoId' => 'sometimes|numeric',
-            'coddis' => 'sometimes',
+            'schoolclasses' => 'required|array',
+            'schoolclasses.*' => 'required|integer',
+            'numsemidl' => 'required|integer',
+            'nomcur' => 'required',
+            'perhab' => 'required',
+            'tipobg' => 'required',
+            'codhab' => 'required'
         ];
 
         return $rules;

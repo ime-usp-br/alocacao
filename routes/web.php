@@ -10,6 +10,8 @@ use App\Http\Controllers\FusionController;
 use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\CourseScheduleController;
 use App\Http\Controllers\ObservationController;
+use App\Http\Controllers\CourseInformationController;
+use App\Http\Controllers\CurriculumController;
 
 /*
 |--------------------------------------------------------------------------
@@ -71,3 +73,12 @@ Route::get('/courseschedules', [CourseScheduleController::class, 'index'])->name
 Route::get('/courseschedules/{course}', [CourseScheduleController::class, 'show'])->name('courseschedules.show');
 
 Route::resource('observations', ObservationController::class);
+
+Route::get("/courseinformations/{ci}/detach/{sc}", [CourseInformationController::class, "detach"])->name("courseinformations.detach");
+Route::patch("/courseinformations/attach}", [CourseInformationController::class, "attach"])->name("courseinformations.attach");
+
+Route::get("curriculum/licnot/semesters/{semester}", [CurriculumController::class, "editLicNot"])->name("curriculum.edit.licnot");
+Route::get("curriculum/licnot/semesters", [CurriculumController::class, "semestersLicNot"])->name("curriculum.semesters.licnot");
+Route::get("curriculum/{course}/semesters/{semester}", [CurriculumController::class, "edit"])->name("curriculum.edit");
+Route::get("curriculum/{course}/semesters", [CurriculumController::class, "semesters"])->name("curriculum.semesters");
+Route::get("curriculum", [CurriculumController::class, "index"])->name("curriculum.index");

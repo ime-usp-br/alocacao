@@ -46,6 +46,11 @@
                     </ul>
                 </li>
             @endcan
+            @can("visualizar grade curricular")
+                <li>
+                    <a href="{{ route('curriculum.index') }}">Grade Curricular</a>
+                </li>
+            @endcan
             @can("visualizar turmas")
                 <li>
                     <a href="{{ route('schoolclasses.index') }}">Turmas Internas</a>
