@@ -280,7 +280,7 @@ class CourseScheduleController extends Controller
     
                     $turmas = $turmas->filter(function($turma){
                         foreach($turma->classschedules as $schedule){
-                            if($schedule->horent < "18:00"){
+                            if($schedule->horent < "18:00" and $turma->coddis!="MAT1500"){
                                 return false;
                             }
                         }
