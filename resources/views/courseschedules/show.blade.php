@@ -115,7 +115,7 @@
                                                         ->where("nomcur",$course->nomcur)
                                                         ->where("perhab", $course->perhab)
                                                         ->where("tipobg", "O")
-                                                        ->whereIn("codhab", [1,4,$codhab])->exists();
+                                                        ->where("codhab", $codhab)->exists();
                                                 @endphp
                                                 <a class="text-dark" target="_blank"
                                                     href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
@@ -128,7 +128,7 @@
                                                     ->whereIn("numsemidl",[$semester-1,$semester])
                                                     ->where("nomcur",$course->nomcur)
                                                     ->where("perhab", $course->perhab)
-                                                    ->whereIn("codhab", [1,4,$codhab])
+                                                    ->where("codhab", $codhab)
                                                     ->where("tipobg", "O")
                                                     ->get()->toArray();
 

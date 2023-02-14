@@ -118,7 +118,7 @@
                                                 ->whereIn("numsemidl",[$semester-1,$semester])
                                                 ->where("nomcur",$course->nomcur)
                                                 ->where("perhab", $course->perhab)
-                                                ->whereIn("codhab", [1,4,$codhab])
+                                                ->where("codhab", $codhab)
                                                 ->get()->toArray();
 
                                             foreach($tipobg as $key=>$value){
