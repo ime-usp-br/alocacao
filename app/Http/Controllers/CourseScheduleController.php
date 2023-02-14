@@ -83,7 +83,7 @@ class CourseScheduleController extends Controller
                                 return false;
                             }
                             foreach($turma->classschedules as $schedule){
-                                if($schedule->horent >= "18:00"){
+                                if($schedule->horent >= "18:30"){
                                     return false;
                                 }
                             }
@@ -92,7 +92,7 @@ class CourseScheduleController extends Controller
                     }elseif($course->nomcur=="Estatística Bacharelado"){
                         $turmas = $turmas->filter(function($turma){
                             foreach($turma->classschedules as $schedule){
-                                if($schedule->horent >= "18:00"){
+                                if($schedule->horent >= "18:30"){
                                     return false;
                                 }
                             }
@@ -101,7 +101,7 @@ class CourseScheduleController extends Controller
                     }elseif($course->nomcur=="Matemática Aplicada - Bacharelado"){
                         $turmas = $turmas->filter(function($turma){
                             foreach($turma->classschedules as $schedule){
-                                if($schedule->horent >= "18:00"){
+                                if($schedule->horent >= "18:30"){
                                     return false;
                                 }
                             }
