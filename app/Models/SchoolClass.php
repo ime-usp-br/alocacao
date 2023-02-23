@@ -92,12 +92,26 @@ class SchoolClass extends Model
         return $this->belongsToMany(CourseInformation::class);
     }
 
+    public function getRoomName()
+    {
+        if($this->fusion()->exists()){
+            return $this->fusion->master->room()->exists() ? $this->fusion->master->room->nome : "Sem Sala";
+        }else{
+            return $this->room()->exists() ? $this->room->nome : "Sem Sala";
+        }
+    }
+
     public function isInConflict($turma)
     {
+        $t1di = Carbon::createFromFormat('d/m/Y', $this->dtainitur);
+        $t1df = Carbon::createFromFormat('d/m/Y', $this->dtafimtur);
+        $t2di = Carbon::createFromFormat('d/m/Y', $turma->dtainitur);
+        $t2df = Carbon::createFromFormat('d/m/Y', $turma->dtafimtur);
+
         foreach($this->classschedules as $cs1){
             foreach($turma->classschedules as $cs2){
                 if($cs1->diasmnocp == $cs2->diasmnocp){
-                    if(!($cs1->horsai <= $cs2->horent or $cs1->horent >= $cs2->horsai)){
+                    if(!($cs1->horsai <= $cs2->horent or $cs1->horent >= $cs2->horsai) and !($t1df <= $t2di or $t1di >= $t2df)){
                         return true;
                     }
                 }

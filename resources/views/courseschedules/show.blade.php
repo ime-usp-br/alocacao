@@ -193,7 +193,7 @@
                                                     $codturs = [];
                                                 @endphp
                                                 @foreach($schoolclasses[$semester][$nomhab] as $turma2)
-                                                    @if(($turma->coddis == $turma2->coddis) and ($turma->instructors->diff($turma2->instructors)->isEmpty()) and ($turma2->instructors->diff($turma->instructors)->isEmpty()))
+                                                    @if(($turma->coddis == $turma2->coddis) and ($turma->getRoomName() == $turma2->getRoomName()) and ($turma->instructors->diff($turma2->instructors)->isEmpty()) and ($turma2->instructors->diff($turma->instructors)->isEmpty()))
                                                         @php 
                                                             array_push($done, $turma2->id); 
                                                             array_push($codturs, $turma2->codtur); 
@@ -369,7 +369,7 @@
                                                 $codturs = [];
                                             @endphp
                                             @foreach($free_electives[$nomhab] as $turma2)
-                                                @if(($turma->coddis == $turma2->coddis) and ($turma->instructors->diff($turma2->instructors)->isEmpty()) and ($turma2->instructors->diff($turma->instructors)->isEmpty()))
+                                                @if(($turma->coddis == $turma2->coddis) and ($turma->getRoomName() == $turma2->getRoomName()) and ($turma->instructors->diff($turma2->instructors)->isEmpty()) and ($turma2->instructors->diff($turma->instructors)->isEmpty()))
                                                     @php 
                                                         array_push($done, $turma2->id); 
                                                         array_push($codturs, substr($turma2->codtur,-2,2)); 
