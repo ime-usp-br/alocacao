@@ -216,7 +216,7 @@
             @endforeach
             
             @if($electives->isNotEmpty())
-                <h2 class="text-left"><b>Disciplinas Optativas</b></h2>
+                <h2 class="text-left"><b>Horários das Optativas Eletivas</b></h2>
                 <br>
 
                 <table class="table table-bordered" style="font-size:15px;">
