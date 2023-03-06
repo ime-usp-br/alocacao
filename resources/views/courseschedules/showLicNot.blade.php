@@ -61,28 +61,30 @@
                                             @php $done = []; @endphp
                                             <td style="vertical-align: middle;" width="180px">                                                
                                                 @foreach($schoolclasses[$semester][$grupo] as $turma)
-                                                    @if($turma->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
-                                                        @if(!$turma->externa)
-                                                            <a class="text-dark" target="_blank"
-                                                                href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                                            >
-                                                                {!! $turma->coddis." T.".substr($turma->codtur,-2,2) !!}
-                                                            </a>
-                                                            <br>
-                                                        @elseif(!in_array($turma->id, $done))
-                                                            <a class="text-dark" target="_blank"
-                                                                href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                                            >
-                                                                {!! $turma->coddis." " !!}
-                                                                @php $coddis = $turma->coddis; @endphp
-                                                                @foreach($schoolclasses[$semester][$grupo]->filter(function($t)use($coddis){return $t->coddis == $coddis;}) as $turma2)
-                                                                    @if($turma2->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
-                                                                        {!! "T.".substr($turma2->codtur,-2,2)." " !!}
-                                                                        @php array_push($done, $turma2->id); @endphp
-                                                                    @endif
-                                                                @endforeach
-                                                            </a>
-                                                            <br>
+                                                    @if($turma->courseinformations()->where("codcur", "45024")->where("codhab", "4")->where("numsemidl", $semester)->exists())
+                                                        @if($turma->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
+                                                            @if(!$turma->externa)
+                                                                <a class="text-dark" target="_blank"
+                                                                    href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                                                >
+                                                                    {!! $turma->coddis." T.".substr($turma->codtur,-2,2) !!}
+                                                                </a>
+                                                                <br>
+                                                            @elseif(!in_array($turma->id, $done))
+                                                                <a class="text-dark" target="_blank"
+                                                                    href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                                                >
+                                                                    {!! $turma->coddis." " !!}
+                                                                    @php $coddis = $turma->coddis; @endphp
+                                                                    @foreach($schoolclasses[$semester][$grupo]->filter(function($t)use($coddis){return $t->coddis == $coddis;}) as $turma2)
+                                                                        @if($turma2->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
+                                                                            {!! "T.".substr($turma2->codtur,-2,2)." " !!}
+                                                                            @php array_push($done, $turma2->id); @endphp
+                                                                        @endif
+                                                                    @endforeach
+                                                                </a>
+                                                                <br>
+                                                            @endif
                                                         @endif
                                                     @endif
                                                 @endforeach

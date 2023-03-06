@@ -76,8 +76,12 @@ class CourseScheduleController extends Controller
                         }
                         })->get();
                 
-                $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1)));
+                $temTurmaDesseSemestre = $turmas->filter(function($turma)use($course, $semester, $codhab){
+                    return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->where("numsemidl", $semester)->exists();
+                })->isNotEmpty();
 
+                $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1)) and $temTurmaDesseSemestre);
+                
                 if($show[$semester][$nomhab]){  
                     if($course->nomcur=="Matemática Licenciatura" and $course->perhab=="diurno"){
                         $turmas = $turmas->filter(function($turma){
@@ -131,6 +135,12 @@ class CourseScheduleController extends Controller
                         });
                     }
 
+                    $schoolclasses[$semester][$nomhab] = $turmas;
+
+                    $turmas = $turmas->filter(function($turma)use($course, $semester, $codhab){
+                        return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->where("numsemidl", $semester)->exists();
+                    });
+
                     $days[$semester][$nomhab] = ['seg', 'ter', 'qua', 'qui', 'sex']; 
 
                     $temSab = $turmas->filter(function($turma){
@@ -157,7 +167,6 @@ class CourseScheduleController extends Controller
                         array_push($schedules[$semester][$nomhab], $horario["horent"]." às ".$horario["horsai"]);
                     }
 
-                    $schoolclasses[$semester][$nomhab] = $turmas;
                 }
             }
         }
@@ -414,7 +423,10 @@ class CourseScheduleController extends Controller
                         array_push($days[$semester][$grupo], "sab");
                     }
 
-                    $ids = $schoolclasses[$semester][$grupo]->pluck("id")->toArray();
+                    $ids = $schoolclasses[$semester][$grupo]->filter(function($turma)use($course, $semester){
+                        return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("perhab",$course->perhab)->where("numsemidl", $semester)->exists();
+                    })->pluck("id")->toArray();
+                    
                     $horarios = array_unique(ClassSchedule::whereHas("schoolclasses", function($query)use($ids){
                         $query->whereIn("id",$ids);
                     })->select(["horent","horsai"])->where("diasmnocp", "!=", "dom")->get()->toArray(),SORT_REGULAR);
