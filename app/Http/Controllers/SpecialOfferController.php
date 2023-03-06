@@ -33,8 +33,12 @@ class SpecialOfferController extends Controller
             $buff["nomcur"] = $nomcur;
 
             $coddis = SpecialOffer::where("nomcur", $nomcur)->pluck("coddis")->unique()->sort()->values()->toArray();
-
-            $buff["nrows"] = max(count($coddis),SchoolClass::whereBelongsTo($schoolterm)->whereIn("coddis", $coddis)->get()->count());
+            
+            $n = 0;
+            foreach(SpecialOffer::where("nomcur", $nomcur)->pluck("coddis")->unique()->sort()->values()->toArray() as $coddis){
+                $n += max(1,SchoolClass::whereBelongsTo($schoolterm)->where("coddis", $coddis)->get()->count());
+            }
+            $buff["nrows"] = $n;
 
             $buff["disciplinas"] = [];
             foreach(SpecialOffer::where("nomcur", $nomcur)->get() as $specialoffer){
