@@ -12,6 +12,7 @@ use App\Http\Controllers\CourseScheduleController;
 use App\Http\Controllers\ObservationController;
 use App\Http\Controllers\CourseInformationController;
 use App\Http\Controllers\CurriculumController;
+use App\Http\Controllers\SpecialOfferController;
 
 /*
 |--------------------------------------------------------------------------
@@ -82,3 +83,5 @@ Route::get("curriculum/licnot/semesters", [CurriculumController::class, "semeste
 Route::get("curriculum/{course}/semesters/{semester}", [CurriculumController::class, "edit"])->name("curriculum.edit");
 Route::get("curriculum/{course}/semesters", [CurriculumController::class, "semesters"])->name("curriculum.semesters");
 Route::get("curriculum", [CurriculumController::class, "index"])->name("curriculum.index");
+
+Route::resource("specialoffers", SpecialOfferController::class);

@@ -66,6 +66,11 @@
                     <a href="{{ route('fusions.index') }}">Dobradinhas</a>
                 </li>
             @endcan
+            @can("visualizar oferecimentos especiais")
+                <li>
+                    <a href="{{ route('specialoffers.index') }}">Oferecimentos Especiais</a>
+                </li>
+            @endcan
             @can("visualizar salas")
                 <li>
                     <a href="{{ route('rooms.index') }}">Salas</a>
