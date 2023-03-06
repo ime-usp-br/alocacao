@@ -1,6 +1,6 @@
 @extends('main')
 
-@section('title', 'Horário das Disciplinas')
+@section('title', $course->nomcur)
 
 @section('content')
   @parent 
@@ -212,15 +212,11 @@
                     @endif
                 @endforeach
             @endforeach
-
+            
             @if($electives->isNotEmpty())
                 <h2 class="text-left"><b>Disciplinas Optativas</b></h2>
                 <br>
-            @elseif($free_electives->isNotEmpty())
-                <h2 class="text-left"><b>Tabela das Optativas Eletivas e Livres </b></h2>
-                <br>
-            @endif
-            @if($electives->isNotEmpty())
+
                 <table class="table table-bordered" style="font-size:15px;">
                     <tr style="background-color:#F5F5F5">
                         <th>Horários</th>
@@ -271,8 +267,7 @@
                     @endforeach
                 </table>
                 <br>          
-            @endif
-            @if($free_electives->isNotEmpty())
+
                 <table class="table table-bordered table-striped table-hover" style="font-size:12px;">
 
                     <tr>
@@ -285,7 +280,7 @@
                     </tr>
 
                         @php $done = []; @endphp
-                        @foreach($free_electives as $turma)
+                        @foreach($electives as $turma)
                             @if(!in_array($turma->id, $done))
                                 <tr>
                                     <td style="vertical-align: middle;">{!! $turma->coddis !!}</td>

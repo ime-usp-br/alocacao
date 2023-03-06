@@ -221,11 +221,7 @@
                 @if($electives[$nomhab]->isNotEmpty())
                     <h2 class="text-left"><b>{!! "Horários das Optativas Eletivas ".(count($optatives_habilitations) > 1 ? ( in_array($codhab, [1,4]) ? "- Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
                     <br>
-                @elseif($free_electives[$nomhab]->isNotEmpty())
-                    <h2 class="text-left"><b>{!! "Tabela das Optativas Eletivas e Livres ".(count($optatives_habilitations) > 1 ? ( in_array($codhab, [1,4]) ? "- Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
-                    <br>
-                @endif
-                @if($electives[$nomhab]->isNotEmpty())
+
                     <table class="table table-bordered" style="font-size:15px;">
                         <tr style="background-color:#F5F5F5">
                             <th>Horários</th>
@@ -276,8 +272,7 @@
                         @endforeach
                     </table>
                     <br>          
-                @endif
-                @if($free_electives[$nomhab]->isNotEmpty())
+
                     <table class="table table-bordered table-striped table-hover" style="font-size:12px;">
 
                         <tr>
@@ -290,7 +285,7 @@
                         </tr>
 
                             @php $done = []; @endphp
-                            @foreach($free_electives[$nomhab] as $turma)
+                            @foreach($electives[$nomhab] as $turma)
                                 @if(!in_array($turma->id, $done))
                                     <tr>
                                         <td style="vertical-align: middle;">{!! $turma->coddis !!}</td>
