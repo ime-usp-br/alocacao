@@ -273,7 +273,7 @@ class CourseScheduleController extends Controller
         foreach($specialoffers_habilitations as $nomhab=>$codhab){
             $specialoffers[$nomhab] = SchoolClass::whereBelongsTo($schoolterm)
                 ->whereIn("coddis", SpecialOffer::where("nomcur", $course->nomcur)->get()->pluck("coddis")->unique()->toArray())
-                ->whereHas("courseinformations", function($query)use($semester, $course, $codhab){
+                ->whereHas("courseinformations", function($query)use($course, $codhab){
                     $query->where("nomcur",$course->nomcur)
                         ->where("perhab", $course->perhab)
                         ->where("tipobg", "L")
@@ -310,6 +310,56 @@ class CourseScheduleController extends Controller
             }
         }
 
+        $electives_specialoffers = [];
+        $electives_specialoffers_days = [];
+        $electives_specialoffers_schedules = [];
+
+        if($course->codcur == 45024){
+            $electives_specialoffers = SchoolClass::whereBelongsTo($schoolterm)
+                ->whereIn("coddis", SpecialOffer::where("nomcur", $course->nomcur)->get()->pluck("coddis")->unique()->toArray())
+                ->whereHas("courseinformations", function($query)use($course){
+                    $query->where("nomcur",$course->nomcur)
+                        ->where("perhab", $course->perhab)
+                        ->where("tipobg", "C");
+                })->get()->filter(function($turma){
+                    foreach($turma->classschedules as $schedule){
+                        if($schedule->horent >= "18:30" and $schedule->diasmnocp!="sab"){
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            
+            if($electives_specialoffers->isNotEmpty()){
+                $electives_specialoffers_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
+    
+                $temSab = $electives_specialoffers->filter(function($turma){
+                    foreach($turma->classschedules as $schedule){
+                        if($schedule->diasmnocp=="sab"){
+                            return true;
+                        }
+                    }
+                    return false;
+                })->isNotEmpty();
+    
+                if($temSab){
+                    array_push($electives_specialoffers_days, "sab");
+                } 
+                
+                $ids = $electives_specialoffers->pluck("id")->toArray();
+                $horarios = array_unique(ClassSchedule::whereHas("schoolclasses", function($query)use($ids){
+                    $query->whereIn("id",$ids);
+                })->select(["horent","horsai"])->where("diasmnocp", "!=", "dom")->get()->toArray(),SORT_REGULAR);
+    
+                array_multisort(array_column($horarios, "horent"), SORT_ASC, $horarios);
+    
+                $electives_specialoffers_schedules = [];
+                foreach($horarios as $horario){
+                    array_push($electives_specialoffers_schedules, $horario["horent"]." às ".$horario["horsai"]);
+                }
+            }
+        }
+
         $temMaisDeUmaHab = CourseInformation::where("nomcur",$course->nomcur)->where("perhab", $course->perhab)->pluck("codhab")->unique()->count() > 1;
 
         return view("courseschedules.show", compact([
@@ -331,6 +381,9 @@ class CourseScheduleController extends Controller
             "specialoffers",
             "specialoffers_days",
             "specialoffers_schedules",
+            "electives_specialoffers",
+            "electives_specialoffers_days",
+            "electives_specialoffers_schedules",
             "temMaisDeUmaHab",
         ]));
     }
@@ -426,7 +479,7 @@ class CourseScheduleController extends Controller
                     $ids = $schoolclasses[$semester][$grupo]->filter(function($turma)use($course, $semester){
                         return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("perhab",$course->perhab)->where("numsemidl", $semester)->exists();
                     })->pluck("id")->toArray();
-                    
+
                     $horarios = array_unique(ClassSchedule::whereHas("schoolclasses", function($query)use($ids){
                         $query->whereIn("id",$ids);
                     })->select(["horent","horsai"])->where("diasmnocp", "!=", "dom")->get()->toArray(),SORT_REGULAR);
@@ -454,10 +507,10 @@ class CourseScheduleController extends Controller
                     ->whereIn("tipobg", ["L","C"]);
                 })->orderBy("coddis")->get();
 
+        $electives_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
+        $electives_schedules = [];
 
         if($electives->isNotEmpty()){
-            $electives_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
-
             $temSab = $electives->filter(function($turma){
                 foreach($turma->classschedules as $schedule){
                     if($schedule->diasmnocp=="sab"){
@@ -478,7 +531,6 @@ class CourseScheduleController extends Controller
 
             array_multisort(array_column($horarios, "horent"), SORT_ASC, $horarios);
 
-            $electives_schedules = [];
             foreach($horarios as $horario){
                 array_push($electives_schedules, $horario["horent"]." às ".$horario["horsai"]);
             }
@@ -492,9 +544,10 @@ class CourseScheduleController extends Controller
                     ->where("tipobg", "L");
                 })->get();
             
-        if($specialoffers->isNotEmpty()){
-            $specialoffers_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
+        $specialoffers_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
+        $specialoffers_schedules = [];
 
+        if($specialoffers->isNotEmpty()){
             $temSab = $specialoffers->filter(function($turma){
                 foreach($turma->classschedules as $schedule){
                     if($schedule->diasmnocp=="sab"){
@@ -515,9 +568,52 @@ class CourseScheduleController extends Controller
 
             array_multisort(array_column($horarios, "horent"), SORT_ASC, $horarios);
 
-            $specialoffers_schedules = [];
             foreach($horarios as $horario){
                 array_push($specialoffers_schedules, $horario["horent"]." às ".$horario["horsai"]);
+            }
+        }
+
+        $electives_specialoffers = SchoolClass::whereBelongsTo($schoolterm)
+            ->whereIn("coddis", SpecialOffer::where("nomcur", $course->nomcur)->get()->pluck("coddis")->unique()->toArray())
+            ->whereHas("courseinformations", function($query)use($semester, $course){
+                $query->where("nomcur",$course->nomcur)
+                    ->where("perhab", $course->perhab)
+                    ->where("tipobg", "c");
+                })->get()->filter(function($turma){
+                    foreach($turma->classschedules as $schedule){
+                        if($schedule->horent < "17:00" and $schedule->diasmnocp!="sab"){
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            
+        $electives_specialoffers_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
+        $electives_specialoffers_schedules = [];
+
+        if($electives_specialoffers->isNotEmpty()){
+            $temSab = $electives_specialoffers->filter(function($turma){
+                foreach($turma->classschedules as $schedule){
+                    if($schedule->diasmnocp=="sab"){
+                        return true;
+                    }
+                }
+                return false;
+            })->isNotEmpty();
+
+            if($temSab){
+                array_push($electives_specialoffers_days, "sab");
+            } 
+            
+            $ids = $electives_specialoffers->pluck("id")->toArray();
+            $horarios = array_unique(ClassSchedule::whereHas("schoolclasses", function($query)use($ids){
+                $query->whereIn("id",$ids);
+            })->select(["horent","horsai"])->where("diasmnocp", "!=", "dom")->get()->toArray(),SORT_REGULAR);
+
+            array_multisort(array_column($horarios, "horent"), SORT_ASC, $horarios);
+
+            foreach($horarios as $horario){
+                array_push($electives_specialoffers_schedules, $horario["horent"]." às ".$horario["horsai"]);
             }
         }
 
@@ -537,6 +633,9 @@ class CourseScheduleController extends Controller
             "specialoffers",
             "specialoffers_days",
             "specialoffers_schedules",
+            "electives_specialoffers",
+            "electives_specialoffers_days",
+            "electives_specialoffers_schedules",
         ]));
     }
 
