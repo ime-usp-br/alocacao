@@ -215,7 +215,7 @@
                 @endforeach
             @endforeach
 
-            @if($electives_specialoffers)
+            @if(count($electives_specialoffers)>0)
                 <h2 class="text-left"><b>Disciplinas Optativas Eletivas com horário especial</b></h2>
                 <br>
 
