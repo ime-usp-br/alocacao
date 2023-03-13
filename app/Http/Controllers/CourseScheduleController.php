@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Http\Requests\ShowPosCourseScheduleRequest;
+use App\Http\Requests\ShowByDepartmentCourseScheduleRequest;
 use App\Models\Course;
 use App\Models\SchoolTerm;
 use App\Models\SchoolClass;
@@ -714,6 +715,34 @@ class CourseScheduleController extends Controller
             "titulo",
             "days",
             "schedules",
+        ]));
+    }
+
+    public function showByDepartment(ShowByDepartmentCourseScheduleRequest $request)
+    {
+        $validated = $request->validated();
+
+        $schoolterm = SchoolTerm::getLatest();
+
+        $observations = Observation::whereBelongsTo($schoolterm)->get();
+
+        $schoolclasses = SchoolClass::whereBelongsTo($schoolterm)
+            ->where("coddis","LIKE",$validated["prefixo"]."%")->orderBy("coddis")->get();
+        $departments = [
+            "MAC"=>"Departamento de Ciência da Computação",
+            "MAE"=>"Departamento de Estatística",
+            "MAT"=>"Departamento de Matemática",
+            "MAP"=>"Departamento de Matemática Aplicada"];
+        $titulo = $departments[$validated["prefixo"]];
+
+        $days = ['seg'=>0, 'ter'=>1, 'qua'=>2, 'qui'=>3, 'sex'=>4, 'sab'=>5];  
+
+        return view("courseschedules.showbydepartment", compact([
+            "schoolterm",
+            "observations",
+            "schoolclasses",
+            "titulo",
+            "days",
         ]));
     }
 }

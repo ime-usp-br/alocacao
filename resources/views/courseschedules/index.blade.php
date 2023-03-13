@@ -105,6 +105,34 @@
                 </div>
             </div>
 
+            <h4 class='mt-5 mb-3'><b>Departamentos</b></h4>
+
+            @php
+                $departamentos = [
+                    "MAC"=>"Departamento de Ciência da Computação",
+                    "MAE"=>"Departamento de Estatística",
+                    "MAT"=>"Departamento de Matemática",
+                    "MAP"=>"Departamento de Matemática Aplicada"
+                ];
+            @endphp
+
+            @foreach($departamentos as $sigla=>$departamento)
+
+                <form action="{{ route('courseschedules.showByDepartment') }}" method="get"
+                    enctype="multipart/form-data"
+                    >
+                        <input type="hidden" id="prefixo" name="prefixo" value="{{ $sigla }}">
+                        @csrf
+                            <li>
+                        <button  class="button-link"
+                            type="submit"
+                        >
+                            {{ $departamento }}
+                        </button>
+                        </li>
+                    </form>  
+            @endforeach
+
             <h4 class='mt-5 mb-3'><b>Listagem completa</b></h4>
 
             <li>
