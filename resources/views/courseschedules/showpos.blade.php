@@ -62,9 +62,6 @@
                         <tr>
                             <td style="vertical-align: middle;">{!! $turma->coddis !!}</td>
                             <td style="vertical-align: middle;">
-                                <a class="text-dark" target="_blank"
-                                    href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                >
                                     {!! $turma->nomdis !!}
                                 </a>
                             </td>
