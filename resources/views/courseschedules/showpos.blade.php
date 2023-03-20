@@ -58,11 +58,24 @@
                         <th>Professor(es)</th>
                         <th>Sala</th>
                     </tr>
+                    @php
+                        $codare = [
+                                "MAC"=>"45134",
+                                "MAE"=>"45133",
+                                "MAT"=>"45131",
+                                "MAP"=>"45132",
+                                "IBI"=>"95131",
+                                "MPM"=>"45135",
+                            ];
+                    @endphp
                     @foreach($schoolclasses as $turma)
                         <tr>
                             <td style="vertical-align: middle;">{!! $turma->coddis !!}</td>
-                            <td style="vertical-align: middle;">
-                                    {!! $turma->nomdis !!}
+                            <td style="vertical-align: middle;">                         
+                                <a class="text-dark" target="_blank"
+                                    href="{{ $turma->tiptur=='Pós Graduação' ? 'https://uspdigital.usp.br/janus/componente/disciplinasOferecidasInicial.jsf?action=2&codare='.$codare[substr($turma->coddis, 0, 3)] : ''}}"
+                                >
+                                    {{ $turma->nomdis }}
                                 </a>
                             </td>
                             <td style="white-space: nowrap;vertical-align: middle;">
