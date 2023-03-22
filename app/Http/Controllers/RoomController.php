@@ -86,7 +86,37 @@ class RoomController extends Controller
             abort(403);
         }
 
-        return view('rooms.showFreeTime');
+        $st = SchoolTerm::getLatest();
+
+        $horarios = [
+            "08:00"=>"09:40",
+            "10:00"=>"11:40",
+            "14:00"=>"15:40",
+            "16:00"=>"17:40",
+            "19:20"=>"21:00",
+            "21:10"=>"22:50",
+        ];
+
+        $dias = ['seg', 'ter', 'qua', 'qui', 'sex'];  
+
+        $rooms = [];
+
+        foreach($dias as $dia){
+            foreach($horarios as $horent=>$horsai){
+                $rooms[$dia][$horent][$horsai] = Room::whereDoesntHave("schoolclasses",function($query)use($st,$dia,$horent,$horsai){
+                    $query->whereBelongsTo($st)->whereHas("classschedules",function($query)use($dia,$horent,$horsai){
+                        $query->where("diasmnocp",$dia)->where("horsai",">",$horent)->where("horent","<",$horsai);
+                    });
+                })->get();
+            }
+        }
+
+        return view('rooms.showFreeTime', compact([
+            "st",
+            "dias",
+            "horarios",
+            "rooms",
+        ]));
     }
 
     /**
