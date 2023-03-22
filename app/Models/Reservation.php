@@ -34,7 +34,7 @@ class Reservation extends Model
 
             $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
             $data = $data_init;
-            $dias = [1 => "seg",2 => "ter",3 => "qua",4 => "qui",5 => "sex",6 => "sab",7 => "dom"];
+            $dias = [1 => "seg",2 => "ter",3 => "qua",4 => "qui",5 => "sex"];
             while($data <= $data_fim){
                 foreach($schoolclass->classschedules as $schedule){
                     if($schedule->diasmnocp == $dias[$data->format("N")]){
