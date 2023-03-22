@@ -34,10 +34,10 @@ class Reservation extends Model
 
             $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
             $data = $data_init;
-            $dias = [1 => "seg",2 => "ter",3 => "qua",4 => "qui",5 => "sex"];
+            $dias = [1 => "seg",2 => "ter",3 => "qua",4 => "qui",5 => "sex",6 => "sab",7 => "dom"];
             while($data <= $data_fim){
                 foreach($schoolclass->classschedules as $schedule){
-                    if($schedule->diasmnocp == $dias[$data->format("N")]){
+                    if($schedule->diasmnocp != "sab" and $schedule->diasmnocp != "dom" and $schedule->diasmnocp == $dias[$data->format("N")]){
                         $reservations = Reservation::where(["data" => $data->format("Y-m-d"),"sala_numero" => $sala])->get();
                         foreach($reservations as $reservation){                            
                             if(!($schedule->horsai.":00" <= $reservation->hi or $schedule->horent.":00" >= $reservation->hf)){
