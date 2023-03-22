@@ -29,7 +29,7 @@ class Reservation extends Model
     public static function checkAvailability($schoolclass)
     {
         if($schoolclass->room){
-            $data_init = Datetime::createFromFormat("d/m/Y",$schoolclass->dtainitur);
+            $data_init = now();
             $data_fim = Datetime::createFromFormat("d/m/Y",$schoolclass->dtafimtur);
 
             $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
