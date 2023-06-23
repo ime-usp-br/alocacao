@@ -73,7 +73,7 @@
                             <td style="vertical-align: middle;">{!! $turma->coddis !!}</td>
                             <td style="vertical-align: middle;">                         
                                 <a class="text-dark" target="_blank"
-                                    href="{{ ($turma->tiptur=='Pós Graduação' and in_array(substr($turma->coddis, 0, 3), $codare)) ? 'https://uspdigital.usp.br/janus/componente/disciplinasOferecidasInicial.jsf?action=2&codare='.$codare[substr($turma->coddis, 0, 3)] : ''}}"
+                                    href="{{ ($turma->tiptur=='Pós Graduação' and in_array(substr($turma->coddis, 0, 3), array_keys($codare))) ? 'https://uspdigital.usp.br/janus/componente/disciplinasOferecidasInicial.jsf?action=2&codare='.$codare[substr($turma->coddis, 0, 3)] : ''}}"
                                 >
                                     {{ $turma->nomdis }}
                                 </a>
