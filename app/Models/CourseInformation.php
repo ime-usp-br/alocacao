@@ -71,7 +71,9 @@ class CourseInformation extends Model
         
         foreach($res as $key=>$values){
             $data = Datetime::createFromFormat("Y-m-d H:i:s",$values["dtaatvhab"]);
-            $data = $data->add(new DateInterval("P".(($values["numsemidl"]-1)*6)."M"));
+            if((($values["numsemidl"]-1)*6-1)>0){
+                $data = $data->add(new DateInterval("P".(($values["numsemidl"]-1)*6-1)."M"));
+            }
             if($data>(new Datetime())){
                 unset($res[$key]);
             }
@@ -161,7 +163,9 @@ class CourseInformation extends Model
         
         foreach($res as $key=>$values){
             $data = Datetime::createFromFormat("Y-m-d H:i:s",$values["dtaatvhab"]);
-            $data = $data->add(new DateInterval("P".(($values["numsemidl"]-1)*6)."M"));
+            if((($values["numsemidl"]-1)*6-1)>0){
+                $data = $data->add(new DateInterval("P".(($values["numsemidl"]-1)*6-1)."M"));
+            }
             if($data>(new Datetime())){
                 unset($res[$key]);
             }

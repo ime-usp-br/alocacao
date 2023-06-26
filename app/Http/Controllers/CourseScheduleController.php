@@ -78,7 +78,7 @@ class CourseScheduleController extends Controller
                         })->get();
                 
                 $temTurmaDesseSemestre = $turmas->filter(function($turma)use($course, $semester, $codhab){
-                    return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->where("numsemidl", $semester)->exists();
+                    return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->whereIn("numsemidl",[$semester-1,$semester])->exists();
                 })->isNotEmpty();
 
                 $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1)) and $temTurmaDesseSemestre);

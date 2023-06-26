@@ -42,58 +42,60 @@
                     @if($show[$semester][$nomhab])
                         <h2 class="text-left"><b>{!! $semester."° Semestre".(count($habilitations[$semester]) > 1 ? ( in_array($codhab, [1,4]) ? " 00".$codhab." - "."Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
                         <br>
-                        <table class="table table-bordered" style="font-size:15px;">
-                            <tr style="background-color:#F5F5F5">
-                                <th>Horários</th>
-                                <th>Segunda</th>
-                                <th>Terça</th>
-                                <th>Quarta</th>
-                                <th>Quinta</th>
-                                <th>Sexta</th>
-                                @if(in_array("sab",$days[$semester][$nomhab]))
-                                    <th>Sábado</th>
-                                @endif
-                            </tr>
-                            @foreach($schedules[$semester][$nomhab] as $h)
-                                <tr>
-                                    <td style="vertical-align: middle;" width="170px">{{ explode(" ",$h)[0] }}<br>{{ explode(" ",$h)[1] }}<br>{{ explode(" ",$h)[2] }}</td>
-                                    @foreach($days[$semester][$nomhab] as $dia)
-                                        @php $done = []; @endphp
-                                        <td style="vertical-align: middle;" width="180px">                                                
-                                            @foreach($schoolclasses[$semester][$nomhab] as $turma)
-                                                @if($turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->where("numsemidl", $semester)->exists())
-                                                    @if($turma->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
-                                                        @if(!$turma->externa)
-                                                            <a class="text-dark" target="_blank"
-                                                                href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                                            >
-                                                                {!! $turma->coddis." T.".substr($turma->codtur,-2,2) !!}
-                                                            </a>
-                                                            <br>
-                                                        @elseif(!in_array($turma->id, $done))
-                                                            <a class="text-dark" target="_blank"
-                                                                href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
-                                                            >
-                                                                {!! $turma->coddis." " !!}
-                                                                @php $coddis = $turma->coddis; @endphp
-                                                                @foreach($schoolclasses[$semester][$nomhab]->filter(function($t)use($coddis){return $t->coddis == $coddis;}) as $turma2)
-                                                                    @if($turma2->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
-                                                                        {!! "T.".substr($turma2->codtur,-2,2)." " !!}
-                                                                        @php array_push($done, $turma2->id); @endphp
-                                                                    @endif
-                                                                @endforeach
-                                                            </a>
-                                                            <br>
+                        @if($schedules[$semester][$nomhab])
+                            <table class="table table-bordered" style="font-size:15px;">
+                                <tr style="background-color:#F5F5F5">
+                                    <th>Horários</th>
+                                    <th>Segunda</th>
+                                    <th>Terça</th>
+                                    <th>Quarta</th>
+                                    <th>Quinta</th>
+                                    <th>Sexta</th>
+                                    @if(in_array("sab",$days[$semester][$nomhab]))
+                                        <th>Sábado</th>
+                                    @endif
+                                </tr>
+                                @foreach($schedules[$semester][$nomhab] as $h)
+                                    <tr>
+                                        <td style="vertical-align: middle;" width="170px">{{ explode(" ",$h)[0] }}<br>{{ explode(" ",$h)[1] }}<br>{{ explode(" ",$h)[2] }}</td>
+                                        @foreach($days[$semester][$nomhab] as $dia)
+                                            @php $done = []; @endphp
+                                            <td style="vertical-align: middle;" width="180px">                                                
+                                                @foreach($schoolclasses[$semester][$nomhab] as $turma)
+                                                    @if($turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->where("numsemidl", $semester)->exists())
+                                                        @if($turma->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
+                                                            @if(!$turma->externa)
+                                                                <a class="text-dark" target="_blank"
+                                                                    href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                                                >
+                                                                    {!! $turma->coddis." T.".substr($turma->codtur,-2,2) !!}
+                                                                </a>
+                                                                <br>
+                                                            @elseif(!in_array($turma->id, $done))
+                                                                <a class="text-dark" target="_blank"
+                                                                    href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
+                                                                >
+                                                                    {!! $turma->coddis." " !!}
+                                                                    @php $coddis = $turma->coddis; @endphp
+                                                                    @foreach($schoolclasses[$semester][$nomhab]->filter(function($t)use($coddis){return $t->coddis == $coddis;}) as $turma2)
+                                                                        @if($turma2->classschedules()->where("diasmnocp",$dia)->where("horent",explode(" ",$h)[0])->where("horsai",explode(" ",$h)[2])->get()->isNotEmpty())
+                                                                            {!! "T.".substr($turma2->codtur,-2,2)." " !!}
+                                                                            @php array_push($done, $turma2->id); @endphp
+                                                                        @endif
+                                                                    @endforeach
+                                                                </a>
+                                                                <br>
+                                                            @endif
                                                         @endif
                                                     @endif
-                                                @endif
-                                            @endforeach
-                                        </td>
-                                    @endforeach
-                                </tr>
-                            @endforeach
-                        </table>
-                        <br>          
+                                                @endforeach
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            </table>
+                            <br>          
+                        @endif
                         <table class="table table-bordered table-striped table-hover" style="font-size:12px;">
 
                             <tr>
@@ -556,7 +558,7 @@
 
             @foreach($specialoffers_habilitations as $nomhab=>$codhab)
                 @if($specialoffers[$nomhab]->isNotEmpty())
-                    <h2 class="text-left"><b>{!! "Optativas Livres: oferecimentos especiais ".( $temMaisDeUmaHab ? ( in_array($codhab, [1,4]) ? "- Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
+                    <h2 class="text-left"><b>{!! "Optativas Livres: oferecimentos especiais ".( $temMaisDeUmaHab ? ( in_array($codhab, [1,4]) ? "" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
                     <br>
 
                     <table class="table table-bordered" style="font-size:15px;">
