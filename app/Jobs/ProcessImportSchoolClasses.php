@@ -108,6 +108,9 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
                                 $schoolclass->instructors()->attach(Instructor::updateOrCreate(["nompes"=>$docente["nompes"],"codpes"=>$docente["codpes"]],["codema"=>$docente["codema"]]));
                             }
                         }
+
+                        $schoolclass->school_term_id = $schoolterm->id;
+                        $schoolclass->save();
                     }
 
                     foreach(CourseInformation::getFromReplicadoBySchoolClass($schoolclass) as $info){
