@@ -84,7 +84,7 @@ class CourseScheduleController extends Controller
                 $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1)) and $temTurmaDesseSemestre);
                 
                 if($show[$semester][$nomhab]){  
-                    if($course->nomcur=="Matemática Licenciatura" and $course->perhab=="diurno"){
+                    if($course->nomcur=="Matemática - Licenciatura" and $course->perhab=="diurno"){
                         $turmas = $turmas->filter(function($turma){
                             if(substr($turma->codtur,-2,2)=="47" or substr($turma->codtur,-2,2)=="48"){
                                 return false;
@@ -96,7 +96,7 @@ class CourseScheduleController extends Controller
                             }
                             return true;
                         });
-                    }elseif($course->nomcur=="Estatística Bacharelado"){
+                    }elseif($course->nomcur=="Estatística - Bacharelado"){
                         $turmas = $turmas->filter(function($turma){
                             foreach($turma->classschedules as $schedule){
                                 if($schedule->horent >= "18:30"){

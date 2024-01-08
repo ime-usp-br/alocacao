@@ -125,7 +125,7 @@ class CurriculumController extends Controller
                     }
                     })->get();
 
-            if($course->nomcur=="Matemática Licenciatura" and $course->perhab=="diurno"){
+            if($course->nomcur=="Matemática - Licenciatura" and $course->perhab=="diurno"){
                 $turmas = $turmas->filter(function($turma){
                     if(substr($turma->codtur,-2,2)=="47" or substr($turma->codtur,-2,2)=="48"){
                         return false;
@@ -137,7 +137,7 @@ class CurriculumController extends Controller
                     }
                     return true;
                 });
-            }elseif($course->nomcur=="Estatística Bacharelado"){
+            }elseif($course->nomcur=="Estatística - Bacharelado"){
                 $turmas = $turmas->filter(function($turma){
                     foreach($turma->classschedules as $schedule){
                         if($schedule->horent >= "18:30"){
