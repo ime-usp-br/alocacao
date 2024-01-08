@@ -13,6 +13,7 @@ class Observation extends Model
         'title',
         'body',
         'school_term_id',
+        'target',
     ];
 
     public function schoolterm()

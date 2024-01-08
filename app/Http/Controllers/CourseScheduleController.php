@@ -26,7 +26,7 @@ class CourseScheduleController extends Controller
     {
         $schoolterm = SchoolTerm::getLatest();
 
-        $observations = Observation::whereBelongsTo($schoolterm)->get();
+        $observations = Observation::whereBelongsTo($schoolterm)->where(function ($query){$query->where("target","Graduação")->orWhere("target","Ambas");})->get();
 
         $semesters = $schoolterm->period == "1° Semestre" ? [1,3,5,7,9] : [2,4,6,8,10];
 
@@ -661,8 +661,8 @@ class CourseScheduleController extends Controller
 
         $schoolterm = SchoolTerm::getLatest();
 
-        $observations = Observation::whereBelongsTo($schoolterm)->get();
-        
+        $observations = Observation::whereBelongsTo($schoolterm)->where(function ($query){$query->where("target","Pós Graduação")->orWhere("target","Ambas");})->get();
+
         if($validated["prefixo"] != "MPM"){
             $schoolclasses = SchoolClass::whereBelongsTo($schoolterm)
                 ->where("tiptur","Pós Graduação")

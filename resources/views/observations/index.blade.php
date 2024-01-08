@@ -17,6 +17,7 @@
                     <tr>
                         <th>Titulo</th>
                         <th>Corpo</th>
+                        <th>Alvo</th>
                         <th></th>
                     </tr>
 
@@ -27,6 +28,7 @@
                         <tr style="font-size:12px;">
                             <td>{{ $observation->title }}</td>
                             <td>{{ $observation->body }}</td>
+                            <td>{{ $observation->target }}</td>
                             <td class="text-center" style="white-space: nowrap;width:100px;">
                                 <form method="get"  action="{{ route('observations.edit', $observation) }}" style="display: inline;">
                                     @csrf

@@ -16,6 +16,27 @@
 
 <div class="d-flex custom-form-group justify-content-center">
     <div class="col-12 col-md-7 text-left">
+        <label for="body">Alvo*:</label>
+    </div>
+</div>
+<div class="d-flex custom-form-group justify-content-center">
+    <div class="col-12 col-md-7">
+        <select class="custom-form-control" type="text" name="target"
+        >
+
+            @foreach ([
+                        "Graduação",
+                        "Pós Graduação",
+                        "Ambas",
+                     ] as $value)
+                <option value='{{$value}}' {{ ( $observation->target === $value) ? 'selected' : ''}}>{{ $value }}</option>
+            @endforeach
+        </select>
+    </div>
+</div>
+
+<div class="d-flex custom-form-group justify-content-center">
+    <div class="col-12 col-md-7 text-left">
         <label for="body">Corpo*:</label>
     </div>
 </div>
@@ -26,6 +47,7 @@
         </textarea>
     </div>
 </div>
+
 
 <div class="row custom-form-group justify-content-center">
     <div class="col-sm-6 text-center text-sm-right my-1">

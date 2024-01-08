@@ -26,6 +26,7 @@ class UpdateObservationRequest extends FormRequest
         $rules = [
             'title' => 'required|max:256',
             'body' => 'required|max:8192',
+            'target' => 'required|in:Graduação,Pós Graduação,Ambas',
         ];
 
         return $rules;

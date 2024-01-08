@@ -9,6 +9,16 @@
         <div class="col-md-12">
             <h1 class='text-center mb-5'><b>{!! $titulo !!}</b></h1>
             <h2 class='text-center mb-5'>Horário das Disciplinas - {!! $schoolterm->period . ' de ' . $schoolterm->year !!}</h2>
+            
+            @foreach($observations as $observation)
+                <div class="card my-3">
+                    <div class="card-body">
+                        <h3 class='card-title' style="color:blue">{!! $observation->title !!}</h3>
+                        <br>
+                        {!! $observation->body !!}
+                    </div>
+                </div>
+            @endforeach
 
             @if($schoolclasses->isNotEmpty())
                 <table class="table table-bordered" style="font-size:15px;">
