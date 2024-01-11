@@ -154,6 +154,16 @@ class SchoolClass extends Model
             }
             $this->fusion()->associate($fusion);
             $this->save();
+
+            $master = $this->fusion->master;
+            foreach($this->fusion->schoolclasses()->where("id","!=",$master->id)->get() as $sc2){
+                if($sc2->room){
+                    $master->room_id = $sc2->room_id;
+                    $sc2->room_id = null;
+                    $master->save();
+                    $sc2->save();
+                }
+            }
         }
     }
 
