@@ -78,9 +78,15 @@ class SchoolTermController extends Controller
      * @param  \App\Models\SchoolTerm  $schoolTerm
      * @return \Illuminate\Http\Response
      */
-    public function edit(SchoolTerm $schoolTerm)
+    public function edit(SchoolTerm $schoolterm)
     {
-        //
+        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+            abort(403);
+        }
+
+        $periodo = $schoolterm;
+
+        return view('schoolterms.edit', compact('periodo'));
     }
 
     /**
@@ -90,9 +96,17 @@ class SchoolTermController extends Controller
      * @param  \App\Models\SchoolTerm  $schoolTerm
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateSchoolTermRequest $request, SchoolTerm $schoolTerm)
+    public function update(UpdateSchoolTermRequest $request, SchoolTerm $schoolterm)
     {
-        //
+        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+            abort(403);
+        }
+
+        $validated = $request->validated();
+
+        $schoolterm->update($validated);
+
+        return redirect('/schoolterms');
     }
 
     /**

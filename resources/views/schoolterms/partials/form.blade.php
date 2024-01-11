@@ -30,6 +30,19 @@
 </div>
 
 <div class="row custom-form-group justify-content-center">
+    <div class="col-sm-2  text-sm-right" style="min-width:150px">
+        <label for="period">Data Maxima de Reserva *</label>
+    </div>
+
+    <div class="col-sm-2" style="white-space: nowrap;">
+        <input class="custom-form-control custom-datepicker" style="max-width:200px;"
+            type="text" name="dtamaxres" id="dtamaxres" autocomplete="off"
+            value="{{ old('dtamaxres') ?? $periodo->dtamaxres ?? ''}}"
+        />
+    </div>
+</div>
+
+<div class="row custom-form-group justify-content-center">
     <div class="col-sm-6 text-center text-sm-right my-1">
         <button type="submit" class="btn btn-outline-dark">
             {{ $buttonText }}

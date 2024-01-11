@@ -74,7 +74,7 @@ class Requisition extends Model
         $requisition->comum = 1;
         $requisition->dataCadastro = date("Y-m-d H:i:s");
         $requisition->dataInicio = date("Y-m-d");
-        $requisition->dataFim = Carbon::createFromFormat('d/m/Y', $schoolclass->dtafimtur)->format("Y-m-d");
+        $requisition->dataFim = Carbon::createFromFormat('d/m/Y', $schoolclass->schoolterm->dtamaxres)->format("Y-m-d");
         $requisition->email = "sistemadealocacao@gmail.com";
         $requisition->frequencia = "MULTIPLA";
         $requisition->participantes = $schoolclass->estmtr ?? 0;

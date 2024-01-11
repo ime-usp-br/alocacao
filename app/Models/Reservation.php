@@ -30,7 +30,7 @@ class Reservation extends Model
     {
         if($schoolclass->room){
             $data_init = now();
-            $data_fim = Datetime::createFromFormat("d/m/Y",$schoolclass->dtafimtur);
+            $data_fim = Datetime::createFromFormat("d/m/Y",$schoolclass->schoolterm->dtamaxres);
 
             $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
             $data = $data_init;
