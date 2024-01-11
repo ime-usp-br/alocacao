@@ -91,14 +91,18 @@
                                     $first = true;
                                     $st = App\Models\SchoolTerm::getLatest();
                                     $turmas_nao_alocadas = App\Models\SchoolClass::whereBelongsTo($st)->whereDoesntHave("room")->whereDoesntHave("fusion")->get();
+                                    $i = 0;
 
                                     foreach($turmas_nao_alocadas as $turma){
-                                        if($sala->isCompatible($turma, $ignore_block=true, $ignore_estmtr=true)){
-                                            if($first){
-                                                $label .= "Compativel com:\n";
-                                                $first = false;
+                                        if($i < 20){
+                                            if($sala->isCompatible($turma, $ignore_block=true, $ignore_estmtr=true)){
+                                                if($first){
+                                                    $label .= "Compativel com:\n";
+                                                    $first = false;
+                                                }
+                                                $label .= $turma->coddis." ".($turma->tiptur=="Graduação" ? "T.".substr($turma->codtur, -2, 2) : "")." ".$turma->nomdis."\n";
+                                                $i += 1;
                                             }
-                                            $label .= $turma->coddis." ".($turma->tiptur=="Graduação" ? "T.".substr($turma->codtur, -2, 2) : "")." ".$turma->nomdis."\n";
                                         }
                                     }
 
@@ -109,23 +113,26 @@
                                                 })->get();
                                     
                                     foreach($dobradinhas_nao_alocadas as $fusion){
-                                        if($sala->isCompatible($fusion->master, $ignore_block=true, $ignore_estmtr=true)){
-                                            if($first){
-                                                $label .= "Compativel com:\n";
-                                                $first = false;
-                                            }
-                                            if($fusion->schoolclasses->pluck("coddis")->unique()->count()==1){
-                                                $label .= $fusion->master->coddis." ";
-                                                foreach(range(0, count($fusion->schoolclasses)-1) as $y){
-                                                    $label .= "T.".substr($fusion->schoolclasses[$y]->codtur,-2,2);
-                                                    $label .= $y != count($fusion->schoolclasses)-1 ? "/" : "";
+                                        if($i < 20){
+                                            if($sala->isCompatible($fusion->master, $ignore_block=true, $ignore_estmtr=true)){
+                                                if($first){
+                                                    $label .= "Compativel com:\n";
+                                                    $first = false;
                                                 }
-                                                $label .= " ".$fusion->master->nomdis."\n";
-                                            }else{
-                                                foreach(range(0, count($fusion->schoolclasses)-1) as $y){
-                                                    $label .= $fusion->schoolclasses[$y]->coddis." ";
-                                                    $label .= $y != count($fusion->schoolclasses)-1 ? "/" : "\n";
+                                                if($fusion->schoolclasses->pluck("coddis")->unique()->count()==1){
+                                                    $label .= $fusion->master->coddis." ";
+                                                    foreach(range(0, count($fusion->schoolclasses)-1) as $y){
+                                                        $label .= "T.".substr($fusion->schoolclasses[$y]->codtur,-2,2);
+                                                        $label .= $y != count($fusion->schoolclasses)-1 ? "/" : "";
+                                                    }
+                                                    $label .= " ".$fusion->master->nomdis."\n";
+                                                }else{
+                                                    foreach(range(0, count($fusion->schoolclasses)-1) as $y){
+                                                        $label .= $fusion->schoolclasses[$y]->coddis." ";
+                                                        $label .= $y != count($fusion->schoolclasses)-1 ? "/" : "\n";
+                                                    }
                                                 }
+                                                $i += 1;
                                             }
                                         }
                                     }
