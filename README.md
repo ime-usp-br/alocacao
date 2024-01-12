@@ -5,7 +5,7 @@
     <img src="logo_ime_vert.jpg" alt="Logo" width="150" height="150">
   </a>
 
-  <h3 align="center">Sistema da Alocação</h3>
+  <h3 align="center">Sistema de Alocação</h3>
 
 </div>
 
