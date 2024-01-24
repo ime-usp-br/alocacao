@@ -68,7 +68,7 @@ class CourseScheduleController extends Controller
                             ->where("nomcur",$course->nomcur)
                             ->where("perhab", $course->perhab)
                             ->where("tipobg", "O")
-                            ->whereIn("codhab", [1,4,$codhab]);
+                            ->whereIn("codhab", [0,1,2,4,$codhab]);
                         }else{
                             $query->whereIn("numsemidl",[$semester-1,$semester])
                                 ->where("nomcur",$course->nomcur)
@@ -81,7 +81,7 @@ class CourseScheduleController extends Controller
                     return $turma->courseinformations()->where("nomcur", $course->nomcur)->where("codhab",$codhab)->whereIn("numsemidl",[$semester-1,$semester])->exists();
                 })->isNotEmpty();
 
-                $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [1,4])) or (count($habilitations[$semester])==1)) and $temTurmaDesseSemestre);
+                $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [0,1,2,4])) or (count($habilitations[$semester])==1)) and $temTurmaDesseSemestre);
                 
                 if($show[$semester][$nomhab]){  
                     if($course->nomcur=="Matemática - Licenciatura" and $course->perhab=="diurno"){

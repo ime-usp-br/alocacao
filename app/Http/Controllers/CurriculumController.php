@@ -115,7 +115,7 @@ class CurriculumController extends Controller
                         ->where("nomcur",$course->nomcur)
                         ->where("perhab", $course->perhab)
                         ->where("tipobg", "O")
-                        ->whereIn("codhab", [1,4,$codhab]);
+                        ->whereIn("codhab", [0,1,2,4,$codhab]);
                     }else{
                         $query->where("numsemidl",$semester)
                             ->where("nomcur",$course->nomcur)
@@ -177,7 +177,7 @@ class CurriculumController extends Controller
                 });
             }
 
-            $show[$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations)>1 and !in_array($codhab, [1,4])) or (count($habilitations)==1)));
+            $show[$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations)>1 and !in_array($codhab, [0,1,2,4])) or (count($habilitations)==1)));
             
             if($show[$nomhab]){  
 

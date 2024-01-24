@@ -40,7 +40,7 @@
             @foreach($semesters as $semester)
                 @foreach($habilitations[$semester] as $nomhab=>$codhab)
                     @if($show[$semester][$nomhab])
-                        <h2 class="text-left"><b>{!! $semester."° Semestre".(count($habilitations[$semester]) > 1 ? ( in_array($codhab, [1,4]) ? " 00".$codhab." - "."Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
+                        <h2 class="text-left"><b>{!! $semester."° Semestre".(count($habilitations[$semester]) > 1 ? ( in_array($codhab, [0,1,2,4]) ? " 00".$codhab." - "."Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
                         <br>
                         @if($schedules[$semester][$nomhab])
                             <table class="table table-bordered" style="font-size:15px;">
@@ -389,7 +389,7 @@
 
             @foreach($optatives_habilitations as $nomhab=>$codhab)
                 @if($electives[$nomhab]->isNotEmpty())
-                    <h2 class="text-left"><b>{!! "Horários das Optativas Eletivas ".( $temMaisDeUmaHab ? ( in_array($codhab, [1,4]) ? "- Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
+                    <h2 class="text-left"><b>{!! "Horários das Optativas Eletivas ".( $temMaisDeUmaHab ? ( in_array($codhab, [0,1,2,4]) ? "- Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
                     <br>
 
                     <table class="table table-bordered" style="font-size:15px;">
@@ -558,7 +558,7 @@
 
             @foreach($specialoffers_habilitations as $nomhab=>$codhab)
                 @if($specialoffers[$nomhab]->isNotEmpty())
-                    <h2 class="text-left"><b>{!! "Optativas Livres: oferecimentos especiais ".( $temMaisDeUmaHab ? ( in_array($codhab, [1,4]) ? "" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
+                    <h2 class="text-left"><b>{!! "Optativas Livres: oferecimentos especiais ".( $temMaisDeUmaHab ? ( in_array($codhab, [0,1,2,4]) ? "" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
                     <br>
 
                     <table class="table table-bordered" style="font-size:15px;">

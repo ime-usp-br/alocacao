@@ -104,7 +104,7 @@
               @if($x % 2 == 0)
                 &
               @endif
-              @if(in_array($codhab, [1,4]))
+              @if(in_array($codhab, [0,1,2,4]))
                 Habilitação: & \textbf{{!! "00".$codhab." - "."Núcleo Básico" !!}}
               @else
                 Habilitação: & \textbf{{!! $codhab." - ".explode("Habilitação em ", $nomhab)[1] !!}}
@@ -220,7 +220,7 @@
                   \makecell{
                     {!! $semestre !!}°\\Semestre
                     @if(count($habs)>1)
-                      \\{\footnotesize Habilitação:}\\{\footnotesize {!! in_array($codhab, [1,4]) ? "00".$codhab : $codhab !!}}
+                      \\{\footnotesize Habilitação:}\\{\footnotesize {!! in_array($codhab, [0,1,2,4]) ? "00".$codhab : $codhab !!}}
                     @endif
                   }
                 }
@@ -228,7 +228,7 @@
                 \makecell{
                   {!! $semestre !!}°\\Semestre
                   @if(count($habs)>1)
-                    \\{\footnotesize Habilitação:}\\{\footnotesize {!! in_array($codhab, [1,4]) ? "00".$codhab : $codhab !!}}
+                    \\{\footnotesize Habilitação:}\\{\footnotesize {!! in_array($codhab, [0,1,2,4]) ? "00".$codhab : $codhab !!}}
                   @endif
                 }
               @endif

@@ -17,7 +17,7 @@
 
             @forelse($habilitations as $nomhab=>$codhab)
                 @if($show[$nomhab])
-                    <h4 class="text-left"><b>{!! "Disciplinas Obrigatórias".((count($habilitations) > 1 or $codhab > 4) ? ( in_array($codhab, [1,4]) ? " 00".$codhab." - "."Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
+                    <h4 class="text-left"><b>{!! "Disciplinas Obrigatórias".((count($habilitations) > 1 or $codhab > 4) ? ( in_array($codhab, [0,1,2,4]) ? " 00".$codhab." - "."Núcleo Básico" : " ".$codhab." - ".explode("Habilitação em ", $nomhab)[1]) : "") !!}</b></h2>
 
                     <p class="text-right">
                         <a  id="btn-openAttachscModal"
@@ -105,7 +105,7 @@
                                                     ->where("nomcur",$course->nomcur)
                                                     ->where("perhab", $course->perhab)
                                                     ->where("tipobg", "O")
-                                                    ->whereIn("codhab", [1,4,$codhab])->exists();
+                                                    ->whereIn("codhab", [0,1,2,4,$codhab])->exists();
                                             @endphp
                                             <a class="text-dark" target="_blank"
                                                 href="{{'https://uspdigital.usp.br/jupiterweb/obterTurma?nomdis=&sgldis='.$turma->coddis}}"
@@ -203,7 +203,7 @@
                                                             ->where('numsemidl',$semester)
                                                             ->where('nomcur',$course->nomcur)
                                                             ->where('perhab', $course->perhab)
-                                                            ->whereIn('codhab', [1,4,$codhab])
+                                                            ->whereIn('codhab', [0,1,2,4,$codhab])
                                                             ->where('tipobg', 'O')
                                                             ->first(), 
                                                         \App\Models\SchoolClass::where('coddis', $turma->coddis)->where('codtur', $codtur)->first()]
