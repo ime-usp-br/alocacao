@@ -84,7 +84,7 @@ class CourseScheduleController extends Controller
                 $show[$semester][$nomhab] = ($turmas->isNotEmpty() and ((count($habilitations[$semester])>1 and !in_array($codhab, [0,1,2,4])) or (count($habilitations[$semester])==1)) and $temTurmaDesseSemestre);
                 
                 if($show[$semester][$nomhab]){  
-                    if($course->nomcur=="Matemática - Licenciatura" and $course->perhab=="diurno"){
+                    if($course->nomcur=="Matemática - Licenciatura" and $course->perhab=="matutino"){
                         $turmas = $turmas->filter(function($turma){
                             if(substr($turma->codtur,-2,2)=="47" or substr($turma->codtur,-2,2)=="48"){
                                 return false;
@@ -282,6 +282,16 @@ class CourseScheduleController extends Controller
                     })->get();
             
             if($specialoffers[$nomhab]->isNotEmpty()){
+
+                if($course->codcur=="45024" and $course->perhab=="matutino"){
+                    $specialoffers[$nomhab] = $specialoffers[$nomhab]->filter(function($turma){
+                        if(substr($turma->codtur,-2,2)=="47" or substr($turma->codtur,-2,2)=="48"){
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+                
                 $specialoffers_days[$nomhab] = ['seg', 'ter', 'qua', 'qui', 'sex']; 
     
                 $temSab = $specialoffers[$nomhab]->filter(function($turma){
