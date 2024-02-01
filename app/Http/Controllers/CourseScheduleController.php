@@ -96,15 +96,6 @@ class CourseScheduleController extends Controller
                             }
                             return true;
                         });
-                    }elseif($course->nomcur=="Estatística - Bacharelado"){
-                        $turmas = $turmas->filter(function($turma){
-                            foreach($turma->classschedules as $schedule){
-                                if($schedule->horent >= "18:30"){
-                                    return false;
-                                }
-                            }
-                            return true;
-                        });
                     }elseif($course->nomcur=="Matemática Aplicada - Bacharelado"){
                         $turmas = $turmas->filter(function($turma){
                             foreach($turma->classschedules as $schedule){
