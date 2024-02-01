@@ -559,6 +559,13 @@ class CourseScheduleController extends Controller
         $specialoffers_schedules = [];
 
         if($specialoffers->isNotEmpty()){
+            $specialoffers = $specialoffers->filter(function($turma){
+                if(substr($turma->codtur,-2,2)=="42"){
+                    return false;
+                }                
+                return true;
+            });
+
             $temSab = $specialoffers->filter(function($turma){
                 foreach($turma->classschedules as $schedule){
                     if($schedule->diasmnocp=="sab"){
