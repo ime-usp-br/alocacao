@@ -25,7 +25,7 @@ class StoreObservationRequest extends FormRequest
     {
         $rules = [
             'title' => 'required|max:256',
-            'body' => 'required|max:8192',
+            'body' => 'required|max:65535',
             'target' => 'required|in:Graduação,Pós Graduação,Ambas',
         ];
 
