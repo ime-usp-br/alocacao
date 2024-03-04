@@ -70,7 +70,13 @@ class Requisition extends Model
 
         $requisition->atividade = 1;
         $requisition->atividadeRegular = 0;
-        $requisition->auditorio = 0;
+
+        if($schoolclass->room->nome == "Auditório Jacy Monteiro" or $schoolclass->room->nome == "Auditório Antonio Gilioli"){
+            $requisition->auditorio = 1;
+        }else{
+            $requisition->auditorio = 0;
+        }
+        
         $requisition->comum = 1;
         $requisition->dataCadastro = date("Y-m-d H:i:s");
         $requisition->dataInicio = date("Y-m-d");

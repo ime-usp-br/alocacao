@@ -32,7 +32,14 @@ class Reservation extends Model
             $data_init = now();
             $data_fim = Datetime::createFromFormat("d/m/Y",$schoolclass->schoolterm->dtamaxres);
 
-            $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
+            if($schoolclass->room->nome == "Auditório Jacy Monteiro"){
+                $sala = "AJM";
+            }elseif($schoolclass->room->nome == "Auditório Antonio Gilioli"){
+                $sala = "AAG";
+            }else{
+                $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
+            }
+
             $data = $data_init;
             $dias = [1 => "seg",2 => "ter",3 => "qua",4 => "qui",5 => "sex",6 => "sab",7 => "dom"];
             while($data <= $data_fim){
@@ -60,7 +67,15 @@ class Reservation extends Model
             $data_fim = new Datetime($requisition->dataFim);
 
             $ids = [];
-            $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
+
+            if($schoolclass->room->nome == "Auditório Jacy Monteiro"){
+                $sala = "AJM";
+            }elseif($schoolclass->room->nome == "Auditório Antonio Gilioli"){
+                $sala = "AAG";
+            }else{
+                $sala = strlen($schoolclass->room->nome) == 4 ? $schoolclass->room->nome : substr($schoolclass->room->nome,0,1)."0".substr($schoolclass->room->nome,1,2);
+            }
+
             $data = $data_init;
             while($data <= $data_fim){
                 if($requisition->dom and $data->format("N")==7){

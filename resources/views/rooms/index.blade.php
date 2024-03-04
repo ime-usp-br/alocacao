@@ -144,7 +144,7 @@
                                     
                                 @endphp
                                 <td>
-                                    <input id="rooms_id" form="distributesForm" class="checkbox" type="checkbox" name="rooms_id[]" value="{{ $sala->id }}" {!! !in_array($sala->nome, ["B05","B04","B07","A249","CEC02","CEC04","CEC05","CEC06"]) ? 'checked' : '' !!}>
+                                    <input id="rooms_id" form="distributesForm" class="checkbox" type="checkbox" name="rooms_id[]" value="{{ $sala->id }}" {!! !in_array($sala->nome, ["B05","B04","B07","A249","CEC02","CEC04","CEC05","CEC06","Auditório Jacy Monteiro","Auditório Antonio Gilioli"]) ? 'checked' : '' !!}>
                                 </td>
                                 <td>
                                     <input id="rooms_id" form="emptyForm" class="checkbox" type="checkbox" name="rooms_id[]" value="{{ $sala->id }}" checked>
