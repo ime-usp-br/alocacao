@@ -74,8 +74,10 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
                         $schoolclass->save();
                 
                         foreach($turma['instructors'] as $instructor){
-                            $docente = Instructor::getFromReplicadoByCodpes($instructor["codpes"]);
-                            $schoolclass->instructors()->attach(Instructor::updateOrCreate(["nompes"=>$docente["nompes"],"codpes"=>$docente["codpes"]],["codema"=>$docente["codema"]]));
+                            if($instructor){
+                                $docente = Instructor::getFromReplicadoByCodpes($instructor["codpes"]);
+                                $schoolclass->instructors()->attach(Instructor::updateOrCreate(["nompes"=>$docente["nompes"],"codpes"=>$docente["codpes"]],["codema"=>$docente["codema"]]));
+                            }
                         }
             
                         foreach($turma['class_schedules'] as $classSchedule){
@@ -102,11 +104,17 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
                             }
                         }
                     }else{
+                        $schoolclass->instructors()->detach();
                         foreach($turma['instructors'] as $instructor){
-                            if(!in_array($instructor["codpes"], $schoolclass->instructors()->pluck("codpes")->toarray())){
+                            if($instructor){
                                 $docente = Instructor::getFromReplicadoByCodpes($instructor["codpes"]);
                                 $schoolclass->instructors()->attach(Instructor::updateOrCreate(["nompes"=>$docente["nompes"],"codpes"=>$docente["codpes"]],["codema"=>$docente["codema"]]));
                             }
+                        }
+
+                        $schoolclass->classschedules()->detach();            
+                        foreach($turma['class_schedules'] as $classSchedule){
+                            $schoolclass->classschedules()->attach(ClassSchedule::firstOrCreate($classSchedule));
                         }
 
                         $schoolclass->school_term_id = $schoolterm->id;
