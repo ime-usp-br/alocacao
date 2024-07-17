@@ -418,6 +418,9 @@ class CourseScheduleController extends Controller
                             })->get();   
     
                     $turmas = $turmas->filter(function($turma){
+                        if($turma->coddis=="4502400"){
+                            return true;
+                        }
                         foreach($turma->classschedules as $schedule){
                             if($schedule->horent < "18:00" and $turma->coddis!="MAT1500"){
                                 return false;
