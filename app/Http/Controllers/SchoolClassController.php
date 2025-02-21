@@ -180,7 +180,8 @@ class SchoolClassController extends Controller
         $schoolclass->instructors()->detach();
         if(array_key_exists('instrutores', $validated)){
             foreach($validated['instrutores'] as $instructor){
-                $schoolclass->instructors()->attach(Instructor::firstOrCreate(Instructor::getFromReplicadoByCodpes($instructor['codpes'])));
+                $docente = Instructor::getFromReplicadoByCodpes($instructor['codpes']);
+                $schoolclass->instructors()->attach(Instructor::updateOrCreate(["codpes" => $docente["codpes"]],["nompes" => $docente["nompes"],"codema" => $docente["codema"]]));
             }
         }
 
