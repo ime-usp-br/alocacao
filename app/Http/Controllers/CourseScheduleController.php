@@ -592,36 +592,12 @@ class CourseScheduleController extends Controller
                     ->where("perhab", $course->perhab)
                     ->where("tipobg", "c");
                 })->get()->filter(function($turma){
-                    // Verificar se é disciplina anual (mais de 6 meses de duração)
-                    $inicio = \Carbon\Carbon::createFromFormat('d/m/Y', $turma->dtainitur);
-                    $fim = \Carbon\Carbon::createFromFormat('d/m/Y', $turma->dtafimtur);
-                    $isAnual = $inicio->diffInDays($fim) > 180;
-                    
-                    // Se for anual, não incluir na grade horária
-                    if($isAnual) {
-                        return false;
-                    }
-                    
                     foreach($turma->classschedules as $schedule){
                         if($schedule->horent < "17:00" and $schedule->diasmnocp!="sab"){
                             return false;
                         }
                     }
                     return true;
-                });
-
-        // Separar disciplinas anuais para mostrar apenas como lista
-        $electives_specialoffers_annual = SchoolClass::whereBelongsTo($schoolterm)
-            ->whereIn("coddis", SpecialOffer::where("nomcur", $course->nomcur)->get()->pluck("coddis")->unique()->toArray())
-            ->whereHas("courseinformations", function($query)use($semester, $course){
-                $query->where("nomcur",$course->nomcur)
-                    ->where("perhab", $course->perhab)
-                    ->where("tipobg", "c");
-                })->get()->filter(function($turma){
-                    // Verificar se é disciplina anual (mais de 6 meses de duração)
-                    $inicio = \Carbon\Carbon::createFromFormat('d/m/Y', $turma->dtainitur);
-                    $fim = \Carbon\Carbon::createFromFormat('d/m/Y', $turma->dtafimtur);
-                    return $inicio->diffInDays($fim) > 180;
                 });
             
         $electives_specialoffers_days = ['seg', 'ter', 'qua', 'qui', 'sex']; 
@@ -672,7 +648,6 @@ class CourseScheduleController extends Controller
             "electives_specialoffers",
             "electives_specialoffers_days",
             "electives_specialoffers_schedules",
-            "electives_specialoffers_annual",
         ]));
     }
 
