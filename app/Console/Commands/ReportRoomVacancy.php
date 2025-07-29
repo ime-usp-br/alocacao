@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\SchoolTerm;
 use App\Models\SchoolClass;
+// MODIFICADO: Importar a classe TableSeparator
+use Symfony\Component\Console\Helper\TableSeparator;
 
 class ReportRoomVacancy extends Command
 {
@@ -42,9 +44,7 @@ class ReportRoomVacancy extends Command
         $allocatedClasses = SchoolClass::whereBelongsTo($schoolterm)
             ->has('room')
             ->where('estmtr', '>', 0)
-            ->with(['room', 'fusion.schoolclasses'])
-            // Adiciona uma subquery para verificar se a turma é obrigatória e de 1º ano.
-            // O resultado será um atributo booleano 'is_first_year_mandatory' em cada modelo.
+            ->with(['room', 'fusion.schoolclasses', 'classschedules'])
             ->withExists(['courseinformations as is_first_year_mandatory' => function ($query) {
                 $query->where('tipobg', 'O')->whereIn('numsemidl', [1, 2]);
             }])
@@ -57,59 +57,88 @@ class ReportRoomVacancy extends Command
 
         $reportData = $allocatedClasses->map(function ($class) {
             $vagas = $class->room->assentos;
-            $inscritos = $class->estmtr;
-            $diferenca = $vagas - $inscritos;
 
-            // Verifica se a turma faz parte de uma dobradinha
-            $coddis = $class->coddis;
             if ($class->fusion) {
-                // Constrói o código da dobradinha no formato coddis1/coddis2
+                $inscritos = $class->fusion->schoolclasses->sum('estmtr');
                 $fusionCodes = $class->fusion->schoolclasses
                     ->pluck('coddis')
                     ->unique()
                     ->sort()
                     ->toArray();
                 $coddis = implode('/', $fusionCodes);
+            } else {
+                $inscritos = $class->estmtr;
+                $coddis = $class->coddis;
             }
+
+            $diferenca = $vagas - $inscritos;
+
+            $dayOrder = [
+                'seg' => 1, 'ter' => 2, 'qua' => 3, 'qui' => 4, 'sex' => 5, 'sab' => 6, 'dom' => 7
+            ];
+
+            $horario = $class->classschedules
+                ->sortBy(function ($schedule) use ($dayOrder) {
+                    return $dayOrder[$schedule->diasmnocp] ?? 99;
+                })
+                ->map(function ($schedule) {
+                    return "{$schedule->diasmnocp} {$schedule->horent}-{$schedule->horsai}";
+                })
+                ->implode("\n");
 
             return [
                 'coddis' => $coddis,
                 'codtur' => substr($class->codtur, -2),
+                'horario' => $horario,
                 'sala' => $class->room->nome,
                 'vagas_sala' => $vagas,
                 'inscritos' => $inscritos,
                 'diferenca' => $diferenca,
-                'is_first_year' => $class->is_first_year_mandatory, // Atributo adicionado pela query
+                'is_first_year' => $class->is_first_year_mandatory,
             ];
         });
 
         $sortedData = $reportData->sortByDesc('diferenca');
 
-        $tableRows = $sortedData->map(function ($item) {
+        // MODIFICADO: Alterado de ->map() para um loop foreach para inserir separadores
+        $tableRows = [];
+        $totalItems = $sortedData->count();
+        $currentItem = 0;
+
+        foreach ($sortedData as $item) {
+            $currentItem++;
+
             $diferenca = $item['diferenca'];
             $style = $diferenca < 0 ? 'red;options=bold' : ($diferenca < 10 ? 'yellow' : 'green');
             
-            // Formata a nova coluna
             $firstYearText = $item['is_first_year'] ? '<fg=cyan;options=bold>Sim</>' : 'Não';
 
-            return [
+            // Adiciona a linha de dados
+            $tableRows[] = [
                 $item['coddis'],
                 $item['codtur'],
+                $item['horario'],
                 $item['sala'],
                 $item['vagas_sala'],
                 $item['inscritos'],
-                $firstYearText, // Adiciona a nova coluna na saída da tabela
+                $firstYearText,
                 "<fg={$style}>{$diferenca}</>",
             ];
-        })->values()->toArray();
+
+            // Adiciona uma linha separadora, exceto após o último item
+            if ($currentItem < $totalItems) {
+                $tableRows[] = new TableSeparator();
+            }
+        }
 
         $headers = [
             'Cód. Disciplina',
             'Turma',
+            'Horário',
             'Sala Alocada',
             'Vagas na Sala',
             'Inscritos (est.)',
-            'Obrig. 1º Ano', // Novo cabeçalho
+            'Obrig. 1º Ano',
             'Sobra de Vagas',
         ];
 
