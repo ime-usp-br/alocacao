@@ -40,7 +40,7 @@ class ReportRoomVacancy extends Command
         $this->info("Gerando relatório de ocupação de salas para o período: {$schoolterm->period} de {$schoolterm->year}");
         $this->line('');
 
-        // 1. Obter turmas alocadas
+        // 1. Obter turmas alocadas (turmas que são mestres de suas fusões e possuem sala)
         $allocatedClasses = SchoolClass::whereBelongsTo($schoolterm)
             ->has('room')
             ->where('estmtr', '>', 0)
@@ -51,12 +51,23 @@ class ReportRoomVacancy extends Command
             ->get();
 
         // 2. Obter turmas internas não alocadas
+        // A lógica foi ajustada para considerar uma turma não alocada somente se:
+        // - Ela não tem sala diretamente.
+        // - E (ela não pertence a uma fusão OU a turma mestre de sua fusão também não tem sala).
+        // Isso impede que turmas de uma dobradinha já alocada apareçam nesta lista.
         $unallocatedClasses = SchoolClass::whereBelongsTo($schoolterm)
             ->where('externa', false) // Apenas turmas internas
-            ->doesntHave('room')
+            ->doesntHave('room')      // A própria turma não deve ter sala
+            ->where(function ($query) {
+                // E ou ela não está em fusão, ou o mestre da sua fusão também não tem sala
+                $query->doesntHave('fusion')
+                    ->orWhereHas('fusion', function ($q) {
+                        $q->doesntHave('master.room');
+                    });
+            })
             ->where('estmtr', '>', 0)
             ->with(['fusion.schoolclasses', 'classschedules'])
-             ->withExists(['courseinformations as is_first_year_mandatory' => function ($query) {
+            ->withExists(['courseinformations as is_first_year_mandatory' => function ($query) {
                 $query->where('tipobg', 'O')->whereIn('numsemidl', [1, 2]);
             }])
             ->get();
@@ -85,21 +96,28 @@ class ReportRoomVacancy extends Command
         })->sortByDesc('diferenca');
 
         // 4. Processar e ordenar dados das turmas não alocadas
-        $unallocatedData = $unallocatedClasses->map(function ($class) {
-            $inscritos = $class->fusion ? $class->fusion->schoolclasses->sum('estmtr') : $class->estmtr;
-            $coddis = $class->fusion ? implode('/', $class->fusion->schoolclasses->pluck('coddis')->unique()->sort()->toArray()) : $class->coddis;
+        // Adicionado filtro para processar cada fusão/turma apenas uma vez
+        $unallocatedData = $unallocatedClasses
+            ->filter(function ($class) {
+                // Mantém a turma se ela não faz parte de uma fusão,
+                // ou se ela É a mestre da sua fusão, evitando duplicatas.
+                return !$class->fusion_id || $class->id === $class->fusion->master_id;
+            })
+            ->map(function ($class) {
+                $inscritos = $class->fusion ? $class->fusion->schoolclasses->sum('estmtr') : $class->estmtr;
+                $coddis = $class->fusion ? implode('/', $class->fusion->schoolclasses->pluck('coddis')->unique()->sort()->toArray()) : $class->coddis;
 
-            return [
-                'coddis' => $coddis,
-                'codtur' => substr($class->codtur, -2),
-                'horario' => $this->formatSchedule($class),
-                'sala' => '<fg=gray>N/A</>',
-                'vagas_sala' => '<fg=gray>-</>',
-                'inscritos' => $inscritos,
-                'diferenca' => '<fg=gray>-</>',
-                'is_first_year' => $class->is_first_year_mandatory,
-            ];
-        })->sortByDesc('inscritos');
+                return [
+                    'coddis' => $coddis,
+                    'codtur' => substr($class->codtur, -2),
+                    'horario' => $this->formatSchedule($class),
+                    'sala' => '<fg=gray>N/A</>',
+                    'vagas_sala' => '<fg=gray>-</>',
+                    'inscritos' => $inscritos,
+                    'diferenca' => '<fg=gray>-</>',
+                    'is_first_year' => $class->is_first_year_mandatory,
+                ];
+            })->sortByDesc('inscritos');
 
         // 5. Montar as linhas da tabela combinada
         $tableRows = [];
