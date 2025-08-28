@@ -112,8 +112,9 @@ return [
 
     'room_mapping' => [
         'special_cases' => [
-            'Auditório Jacy Monteiro' => 'AJM',
-            'Auditório Antonio Gilioli' => 'AAG',
+            // Os auditórios têm nomes idênticos no sistema Salas
+            'Auditório Jacy Monteiro' => 'Auditório Jacy Monteiro',
+            'Auditório Antonio Gilioli' => 'Auditório Antonio Gilioli',
         ],
         'format_4_chars' => true, // B123 -> B0123 for rooms with 4 chars
     ],
