@@ -438,4 +438,274 @@ class ReservationApiServiceTest extends TestCase
 
         $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
     }
+
+    /** @test */
+    public function test_handles_api_unavailability_scenario()
+    {
+        // Arrange - Simulate API completely unavailable (AC5 explicit error behavior)
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('Service unavailable: API Salas is temporarily down'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(1); // Error should be logged
+
+        // Act & Assert - Should throw exception without fallback (AC5 behavior)
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('Service unavailable');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_handles_http_401_unauthorized_error()
+    {
+        // Arrange
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('HTTP 401: Unauthorized - Invalid token'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(1);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('HTTP 401');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_handles_http_403_forbidden_error()
+    {
+        // Arrange
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('HTTP 403: Forbidden - Insufficient permissions'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(1);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('HTTP 403');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_handles_http_429_rate_limit_error()
+    {
+        // Arrange
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('HTTP 429: Too Many Requests - Rate limit exceeded'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('warning')->atLeast(0);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('HTTP 429');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_handles_http_500_server_error()
+    {
+        // Arrange
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('HTTP 500: Internal server error'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(1);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('HTTP 500');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_handles_http_422_validation_error_detailed()
+    {
+        // Arrange
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $validationErrorResponse = [
+            'message' => 'The given data was invalid.',
+            'errors' => [
+                'sala_id' => ['The selected sala id is invalid.'],
+                'horario_inicio' => ['The horario inicio field is required.']
+            ]
+        ];
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('HTTP 422: Validation failed - ' . json_encode($validationErrorResponse)));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('warning')->atLeast(0);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('HTTP 422');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_handles_malformed_api_response()
+    {
+        // Arrange
+        $payload = [
+            'nome' => 'Aula - MAC0110 T.01',
+            'data' => '2024-01-15',
+            'horario_inicio' => '08:00',
+            'horario_fim' => '10:00',
+            'sala_id' => 1,
+            'finalidade_id' => 1,
+            'tipo_responsaveis' => 'eu',
+            'repeat_days' => [1],
+            'repeat_until' => '2024-12-31'
+        ];
+
+        // Malformed response without expected 'data' key
+        $malformedResponse = [
+            'id' => 100,
+            'nome' => 'Aula - MAC0110 T.01'
+            // Missing 'data' wrapper and other expected fields
+        ];
+
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn($payload);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->with('/api/v1/reservas', $payload)
+            ->once()
+            ->andReturn($malformedResponse);
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('warning')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(0);
+
+        // Act & Assert - Should handle gracefully or throw appropriate exception
+        $result = $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+        
+        // Should still return an array, even if malformed
+        $this->assertIsArray($result);
+    }
+
+    /** @test */
+    public function test_handles_concurrent_reservation_conflicts()
+    {
+        // Arrange - Simulate concurrent reservation conflict scenario
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('HTTP 409: Conflict - Room already reserved for this time slot'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(1);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('HTTP 409');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
+
+    /** @test */
+    public function test_check_api_health_method_exists()
+    {
+        // Test that the service has health check capability for AC6 validation
+        $this->assertTrue(method_exists($this->reservationApiService, 'checkApiHealth'));
+    }
+
+    /** @test */
+    public function test_handles_network_timeout()
+    {
+        // Arrange
+        $this->reservationMapper
+            ->shouldReceive('mapSchoolClassToReservationPayload')
+            ->with($this->schoolClass)
+            ->once()
+            ->andReturn([]);
+
+        $this->salasApiClient
+            ->shouldReceive('post')
+            ->once()
+            ->andThrow(new Exception('Network timeout: Request timed out after 30 seconds'));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('debug')->atLeast(0);
+        Log::shouldReceive('error')->atLeast(1);
+
+        // Act & Assert
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('Network timeout');
+
+        $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
+    }
 }
