@@ -67,7 +67,7 @@ class ReservationMapper
      * @return int
      * @throws Exception
      */
-    private function getSalaIdFromNome(string $nomeRoom): int
+    public function getSalaIdFromNome(string $nomeRoom): int
     {
         $cacheKey = $this->cachePrefix . 'room_id:' . md5($nomeRoom);
 
