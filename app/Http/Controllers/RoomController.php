@@ -23,6 +23,7 @@ use App\Models\Priority;
 use App\Models\SchoolClass;
 use App\Models\CourseInformation;
 use App\Models\Fusion;
+use App\Services\ReservationApiService;
 use Illuminate\Support\Facades\Auth;
 
 
@@ -350,8 +351,48 @@ class RoomController extends Controller
 
         $validated = $request->validated();
 
+        // AC5: API connectivity validation with explicit error handling
+        $useApiService = config('salas.use_api', false);
+
+        if ($useApiService) {
+            try {
+                $reservationApiService = app(ReservationApiService::class);
+                $apiHealthy = $reservationApiService->checkApiHealth();
+                
+                if (!$apiHealthy) {
+                    // AC5 Architectural Decision: No fallback - explicit error to user
+                    \Log::error('Salas API indisponível - operação de reserva bloqueada', [
+                        'operation' => 'reservation',
+                        'rooms_count' => count($validated["rooms_id"]),
+                        'user_id' => Auth::id(),
+                        'timestamp' => now()->toISOString(),
+                        'action_required' => 'Verificar status da API Salas'
+                    ]);
+
+                    Session::put("alert-danger", "Sistema de reservas temporariamente indisponível. Tente novamente em alguns minutos ou entre em contato com o suporte.");
+                    return back();
+                }
+            } catch (\Exception $e) {
+                // AC5 Architectural Decision: Explicit error handling without fallback
+                \Log::error('Falha crítica na conectividade com API Salas - operação de reserva bloqueada', [
+                    'operation' => 'reservation',
+                    'error' => $e->getMessage(),
+                    'error_class' => get_class($e),
+                    'rooms_count' => count($validated["rooms_id"]),
+                    'user_id' => Auth::id(),
+                    'timestamp' => now()->toISOString(),
+                    'action_required' => 'Verificar conectividade e status da API Salas'
+                ]);
+
+                Session::put("alert-danger", "Erro na conexão com o sistema de reservas. Por favor, tente novamente em alguns minutos.");
+                return back();
+            }
+        }
+
+        // Only dispatch job if API is healthy (when API is enabled) or API is disabled (legacy mode)
         ProcessReservation::dispatch($validated["rooms_id"]);
 
+        // AC5: Preserve exact feedback message - maintains existing user experience
         Session::put("alert-info", "As reservas no Urano estão sendo processadas.");
         return back();
     }

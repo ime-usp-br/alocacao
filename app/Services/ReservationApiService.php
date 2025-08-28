@@ -474,6 +474,47 @@ class ReservationApiService
     }
 
     /**
+     * Check API connectivity and health
+     * 
+     * This method performs a lightweight health check to validate:
+     * - API connectivity
+     * - Authentication capability 
+     * - Basic API responsiveness
+     *
+     * @return bool True if API is healthy and reachable, false otherwise
+     */
+    public function checkApiHealth(): bool
+    {
+        $this->log('debug', 'Iniciando verificação de saúde da API Salas');
+        
+        try {
+            // Try to authenticate - this validates both connectivity and credentials
+            $response = $this->salasApiClient->get('/api/v1/health');
+            
+            // Check if response indicates API is healthy
+            $isHealthy = isset($response['status']) && $response['status'] === 'ok';
+            
+            $this->log($isHealthy ? 'info' : 'warning', 'Verificação de saúde da API Salas concluída', [
+                'api_healthy' => $isHealthy,
+                'response' => $response,
+                'status' => $isHealthy ? 'success' : 'degraded'
+            ]);
+            
+            return $isHealthy;
+            
+        } catch (Exception $e) {
+            $this->log('error', 'Falha na verificação de saúde da API Salas', [
+                'error_message' => $e->getMessage(),
+                'error_class' => get_class($e),
+                'api_healthy' => false,
+                'status' => 'failed'
+            ]);
+            
+            return false;
+        }
+    }
+
+    /**
      * Log structured messages
      *
      * @param string $level
