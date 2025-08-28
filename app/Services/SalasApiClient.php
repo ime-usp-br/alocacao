@@ -111,6 +111,20 @@ class SalasApiClient
     }
 
     /**
+     * Make a DELETE request to the API
+     *
+     * @param string $endpoint
+     * @param array $data
+     * @return array
+     * @throws Exception
+     */
+    public function delete(string $endpoint, array $data = []): array
+    {
+        $this->ensureAuthenticated();
+        return $this->makeRequest('DELETE', $endpoint, $data);
+    }
+
+    /**
      * Make an HTTP request with retry logic and rate limiting
      *
      * @param string $method
