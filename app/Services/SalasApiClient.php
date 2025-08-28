@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use App\Services\SalasCircuitBreaker;
 use Exception;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\ConnectionException;
@@ -15,11 +16,13 @@ class SalasApiClient
     private ?string $authToken = null;
     private array $requestTimes = [];
     private string $cachePrefix;
+    private SalasCircuitBreaker $circuitBreaker;
 
     public function __construct()
     {
         $this->config = config('salas');
         $this->cachePrefix = $this->config['cache']['prefix'] ?? 'salas_api:';
+        $this->circuitBreaker = new SalasCircuitBreaker();
         
         $this->validateConfiguration();
     }
@@ -136,6 +139,9 @@ class SalasApiClient
      */
     private function makeRequest(string $method, string $endpoint, array $data = [], bool $requiresAuth = true): array
     {
+        // Check circuit breaker before making request
+        $this->circuitBreaker->canExecute();
+        
         return $this->retry(function() use ($method, $endpoint, $data, $requiresAuth) {
             $this->handleRateLimit();
             
@@ -174,18 +180,24 @@ class SalasApiClient
 
                 $this->logResponse($response->status(), $response->json());
 
-                // Handle specific HTTP status codes
+                // Handle specific HTTP status codes with enhanced error information
                 if ($response->status() === 401) {
                     $this->clearAuthCache();
-                    throw new Exception('Authentication failed - token may have expired');
+                    $exception = $this->createHttpException(401, 'Authentication failed - token may have expired', $response);
+                    $this->circuitBreaker->recordFailure($exception);
+                    throw $exception;
                 }
 
                 if ($response->status() === 403) {
-                    throw new Exception('Access denied - insufficient permissions');
+                    $exception = $this->createHttpException(403, 'Access denied - insufficient permissions', $response);
+                    // Don't record 403 as circuit breaker failure (it's a permission issue, not API failure)
+                    throw $exception;
                 }
 
                 if ($response->status() === 404) {
-                    throw new Exception('Resource not found');
+                    $exception = $this->createHttpException(404, 'Resource not found', $response);
+                    // Don't record 404 as circuit breaker failure (it's a client error, not API failure)
+                    throw $exception;
                 }
 
                 if ($response->status() === 422) {
@@ -195,33 +207,48 @@ class SalasApiClient
                         $errors = collect($errorData['errors'])->flatten()->implode(', ');
                         $message .= ': ' . $errors;
                     }
-                    throw new Exception($message);
+                    $exception = $this->createHttpException(422, $message, $response, $errorData);
+                    // Don't record validation errors as circuit breaker failures
+                    throw $exception;
                 }
 
                 if ($response->status() === 429) {
                     $retryAfter = $response->header('Retry-After') ?? 60;
-                    throw new Exception("Rate limit exceeded. Retry after {$retryAfter} seconds");
+                    $exception = $this->createHttpException(429, "Rate limit exceeded. Retry after {$retryAfter} seconds", $response);
+                    $this->circuitBreaker->recordFailure($exception);
+                    throw $exception;
                 }
 
                 if ($response->status() >= 500) {
-                    throw new Exception('Server error: ' . $response->status());
+                    $exception = $this->createHttpException($response->status(), 'Server error: ' . $response->status(), $response);
+                    $this->circuitBreaker->recordFailure($exception);
+                    throw $exception;
                 }
 
                 if (!$response->successful()) {
-                    throw new Exception("Request failed with status: " . $response->status());
+                    $exception = $this->createHttpException($response->status(), "Request failed with status: " . $response->status(), $response);
+                    $this->circuitBreaker->recordFailure($exception);
+                    throw $exception;
                 }
 
+                // Success - record in circuit breaker
+                $this->circuitBreaker->recordSuccess();
+                
                 return $response->json();
 
             } catch (ConnectionException $e) {
-                throw new Exception('Connection failed: ' . $e->getMessage());
+                $exception = new Exception('Connection failed: ' . $e->getMessage());
+                $this->circuitBreaker->recordFailure($exception);
+                throw $exception;
             } catch (RequestException $e) {
-                if ($e->response->status() === 429) {
+                if ($e->response && $e->response->status() === 429) {
                     $retryAfter = $e->response->header('Retry-After') ?? 60;
                     sleep($retryAfter);
                     throw $e; // Let retry mechanism handle it
                 }
-                throw new Exception('Request failed: ' . $e->getMessage());
+                $exception = new Exception('Request failed: ' . $e->getMessage());
+                $this->circuitBreaker->recordFailure($exception);
+                throw $exception;
             }
         }, $this->config['retry']['max_attempts'] ?? 3);
     }
@@ -434,5 +461,64 @@ class SalasApiClient
             ]);
             return false;
         }
+    }
+
+    /**
+     * Get circuit breaker metrics for monitoring
+     *
+     * @return array
+     */
+    public function getCircuitBreakerMetrics(): array
+    {
+        return $this->circuitBreaker->getMetrics();
+    }
+
+    /**
+     * Force reset circuit breaker (for admin/emergency use)
+     *
+     * @return void
+     */
+    public function resetCircuitBreaker(): void
+    {
+        $this->circuitBreaker->forceReset();
+        $this->log('warning', 'Circuit breaker manually reset by admin');
+    }
+
+    /**
+     * Create enhanced HTTP exception with context
+     *
+     * @param int $statusCode
+     * @param string $message
+     * @param mixed $response
+     * @param array $additionalData
+     * @return Exception
+     */
+    private function createHttpException(int $statusCode, string $message, $response = null, array $additionalData = []): Exception
+    {
+        $context = [
+            'http_status' => $statusCode,
+            'message' => $message,
+            'timestamp' => now()->toISOString(),
+        ];
+
+        // Add response headers if available
+        if ($response && method_exists($response, 'headers')) {
+            $context['response_headers'] = [
+                'retry-after' => $response->header('Retry-After'),
+                'x-ratelimit-limit' => $response->header('X-RateLimit-Limit'),
+                'x-ratelimit-remaining' => $response->header('X-RateLimit-Remaining'),
+                'content-type' => $response->header('Content-Type'),
+            ];
+        }
+
+        // Add additional error data for validation errors
+        if (!empty($additionalData)) {
+            $context['error_data'] = $additionalData;
+        }
+
+        // Log the error with full context
+        $this->log('error', "API HTTP {$statusCode} error: {$message}", $context);
+
+        return new Exception($message);
     }
 }

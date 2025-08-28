@@ -130,8 +130,10 @@ return [
 
     'error_handling' => [
         'log_errors' => env('SALAS_LOG_ERRORS', true),
+        'enhanced_context_logging' => env('SALAS_ENHANCED_CONTEXT_LOGGING', true),
         'notify_on_failure' => env('SALAS_NOTIFY_FAILURES', false),
         'notification_channels' => env('SALAS_NOTIFICATION_CHANNELS', 'log'),
         'max_consecutive_failures' => env('SALAS_MAX_FAILURES', 10),
+        'ignore_client_errors' => env('SALAS_IGNORE_CLIENT_ERRORS', true), // Don't count 4xx as circuit breaker failures
     ],
 ];

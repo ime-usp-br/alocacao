@@ -189,6 +189,7 @@ class ReservationApiServiceTest extends TestCase
             });
 
         Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('error')->atLeast(0); // Allow error logs from enhanced context
 
         // Act
         $result = $this->reservationApiService->checkAvailabilityForSchoolClass($this->schoolClass);
@@ -215,6 +216,7 @@ class ReservationApiServiceTest extends TestCase
             });
 
         Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('error')->atLeast(0); // Allow error logs from enhanced context
 
         // Act
         $result = $this->reservationApiService->checkAvailabilityForSchoolClass($this->schoolClass);
