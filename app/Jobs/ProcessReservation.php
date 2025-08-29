@@ -133,9 +133,9 @@ class ProcessReservation implements ShouldQueue, ShouldBeUnique
             } catch (Exception $e) {
                 $this->logApiError($e, 'availability_check', $schoolclass);
                 
-                // Fallback to legacy method
-                $this->logFallbackToLegacy('availability_check', $schoolclass);
-                return Reservation::checkAvailability($schoolclass);
+                // AC5: Explicit error strategy - no fallback to legacy
+                $this->logExplicitErrorStrategy($e, $schoolclass, 'availability_check');
+                throw $e;
             }
         }
         
@@ -170,13 +170,10 @@ class ProcessReservation implements ShouldQueue, ShouldBeUnique
                 // Attempt rollback of any partial creations
                 $this->rollbackPartialCreations($schoolclass);
                 
-                // Check if we should fallback to legacy method
-                if ($this->shouldFallbackOnError()) {
-                    $this->logFallbackToLegacy('reservation_creation', $schoolclass);
-                    $this->processLegacyReservationCreation($schoolclass);
-                } else {
-                    throw $e;
-                }
+                // AC5: Explicit error strategy - no fallback to legacy
+                // When API Salas is unavailable, fail explicitly with proper logging
+                $this->logExplicitErrorStrategy($e, $schoolclass);
+                throw $e;
             }
         } else {
             // Use legacy method
@@ -340,13 +337,15 @@ class ProcessReservation implements ShouldQueue, ShouldBeUnique
     }
 
     /**
-     * Check if we should fallback to legacy on API errors
+     * AC5: Explicit error strategy implementation
+     * Always fail explicitly when API is unavailable - no automatic fallback
      *
      * @return bool
      */
     private function shouldFallbackOnError(): bool
     {
-        return config('salas.fallback_to_urano', true);
+        // AC5 architectural decision: explicit error handling, no fallback
+        return false;
     }
 
     // Logging Methods
@@ -467,14 +466,25 @@ class ProcessReservation implements ShouldQueue, ShouldBeUnique
         ]);
     }
 
-    private function logFallbackToLegacy(string $operation, SchoolClass $schoolclass): void
+    /**
+     * Log explicit error strategy (AC5 implementation)
+     *
+     * @param Exception $e
+     * @param SchoolClass $schoolclass
+     * @param string $operation
+     */
+    private function logExplicitErrorStrategy(Exception $e, SchoolClass $schoolclass, string $operation = 'reservation_creation'): void
     {
-        $this->logWarning("Falling back to legacy method for {$operation}", [
+        $this->logError("API Salas indisponível - erro explícito conforme AC5", [
             'operation' => $operation,
             'schoolclass_id' => $schoolclass->id,
             'disciplina' => $schoolclass->coddis,
             'sala_nome' => $schoolclass->room ? $schoolclass->room->nome : null,
-            'reason' => 'API service failed',
+            'error_strategy' => 'explicit_failure_no_fallback',
+            'ac5_compliance' => true,
+            'api_error' => $e->getMessage(),
+            'user_impact' => 'Operation will fail with clear error message',
+            'admin_action_required' => 'Check API Salas connectivity and resolve infrastructure issues',
             'timestamp' => now()->toISOString()
         ]);
     }
