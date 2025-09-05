@@ -81,28 +81,34 @@ class MigrateReservationsToSalas extends Command
         }
 
         try {
-            // Etapa 1: Validações pré-migração
-            $this->info('📋 Etapa 1: Validações pré-migração');
+            // Etapa 1: Pré-carregamento de cache
+            $this->info('🚀 Etapa 1: Pré-carregamento de cache da API');
+            if (!$this->preloadApiCache()) {
+                return 1;
+            }
+
+            // Etapa 2: Validações pré-migração
+            $this->info('📋 Etapa 2: Validações pré-migração');
             if (!$this->runPreMigrationValidations()) {
                 return 1;
             }
 
-            // Etapa 2: Backup automático
+            // Etapa 3: Backup automático
             if (!$this->option('skip-backup') && !$this->isDryRun) {
-                $this->info('💾 Etapa 2: Backup automático');
+                $this->info('💾 Etapa 3: Backup automático');
                 if (!$this->createAutomaticBackup()) {
                     return 1;
                 }
             }
 
-            // Etapa 3: Processamento principal
-            $this->info('⚡ Etapa 3: Migração de dados');
+            // Etapa 4: Processamento principal
+            $this->info('⚡ Etapa 4: Migração de dados');
             if (!$this->processMigration()) {
                 return 1;
             }
 
-            // Etapa 4: Relatório final
-            $this->info('📊 Etapa 4: Relatório pós-migração');
+            // Etapa 5: Relatório final
+            $this->info('📊 Etapa 5: Relatório pós-migração');
             $this->generatePostMigrationReport();
 
             $this->info('✅ Migração concluída com sucesso!');
@@ -131,8 +137,7 @@ class MigrateReservationsToSalas extends Command
         $this->info('🔍 Executando validações pré-migração...');
         
         $validations = [
-            'api_connectivity' => 'Conectividade com API Salas',
-            'api_authentication' => 'Autenticação na API',
+            'api_connectivity_auth' => 'Conectividade e autenticação API Salas',
             'data_integrity' => 'Integridade dos dados fonte',
             'room_mapping' => 'Mapeamento de salas',
             'storage_space' => 'Espaço em disco para backup',
@@ -163,6 +168,66 @@ class MigrateReservationsToSalas extends Command
     }
 
     /**
+     * Preload API cache to reduce rate limiting issues
+     *
+     * @return bool
+     */
+    private function preloadApiCache(): bool
+    {
+        $this->info('🔄 Pré-carregando cache de salas da API...');
+        
+        try {
+            // Fazer uma única chamada para obter todas as salas
+            $this->line('  🔸 Carregando todas as salas...');
+            $response = $this->apiClient->get('/api/v1/salas');
+            
+            if (!isset($response['data']) || !is_array($response['data'])) {
+                $this->error('  ❌ Resposta inválida da API de salas');
+                return false;
+            }
+            
+            $salasCount = count($response['data']);
+            $this->info("  ✅ {$salasCount} salas carregadas no cache");
+            
+            // Pré-carregar o mapeamento reverso de salas para otimizar as validações
+            $this->line('  🔸 Pré-processando mapeamento reverso de salas...');
+            $cacheHits = 0;
+            
+            foreach ($response['data'] as $sala) {
+                // Tentar mapear nome da API para nomes locais conhecidos
+                $salaApiName = $sala['nome'];
+                $salaId = $sala['id'];
+                
+                // Lista de possíveis variações de nomes (pode ser expandida)
+                $possibleLocalNames = [
+                    $salaApiName, // Nome exato
+                    str_replace(' ', '', $salaApiName), // Sem espaços
+                    strtoupper($salaApiName), // Maiúscula
+                    strtolower($salaApiName), // Minúscula
+                ];
+                
+                foreach ($possibleLocalNames as $localName) {
+                    $cacheKey = 'salas_api:mapper:room_id:' . md5($localName);
+                    if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+                        \Illuminate\Support\Facades\Cache::put($cacheKey, $salaId, 3600);
+                        $cacheHits++;
+                    }
+                }
+            }
+            
+            $this->info("  ✅ {$cacheHits} mapeamentos de salas adicionados ao cache");
+            $this->info('🚀 Cache pré-carregado com sucesso!');
+            
+            return true;
+            
+        } catch (Exception $e) {
+            $this->error("❌ Falha ao pré-carregar cache: {$e->getMessage()}");
+            $this->warn('⚠️  Continuando sem pré-carregamento - pode haver impacto de rate limiting');
+            return true; // Não bloquear a execução por problemas de cache
+        }
+    }
+
+    /**
      * Perform individual validation checks
      *
      * @param string $check
@@ -172,12 +237,8 @@ class MigrateReservationsToSalas extends Command
     {
         try {
             switch ($check) {
-                case 'api_connectivity':
-                    return $this->reservationService->checkApiHealth() ? true : 'API Salas indisponível';
-
-                case 'api_authentication':
-                    $response = $this->apiClient->get('/api/v1/health');
-                    return isset($response['status']) ? true : 'Falha na autenticação';
+                case 'api_connectivity_auth':
+                    return $this->reservationService->checkApiHealth() ? true : 'API Salas indisponível ou falha na autenticação';
 
                 case 'data_integrity':
                     $schoolTermId = $this->option('school-term-id');
@@ -231,20 +292,37 @@ class MigrateReservationsToSalas extends Command
             $query->where('room_id', $roomId);
         }
 
-        $schoolClasses = $query->with('room')->get();
-        $unmappableRooms = [];
+        // Buscar apenas os nomes únicos das salas para evitar duplicação de validações
+        $uniqueRoomNames = $query->with('room')
+            ->get()
+            ->pluck('room.nome')
+            ->unique()
+            ->filter(); // Remove valores nulos/vazios
 
-        foreach ($schoolClasses as $schoolClass) {
-            if ($schoolClass->room) {
-                try {
-                    $this->mapper->getSalaIdFromNome($schoolClass->room->nome);
-                } catch (Exception $e) {
-                    $unmappableRooms[] = $schoolClass->room->nome;
-                }
+        $unmappableRooms = [];
+        $ignoredRooms = [];
+
+        foreach ($uniqueRoomNames as $roomName) {
+            // Verificar se a sala está na lista de ignoradas
+            if ($this->mapper->isIgnoredRoom($roomName)) {
+                $ignoredRooms[] = $roomName;
+                continue;
+            }
+
+            // Tentar mapear apenas salas que não estão ignoradas
+            try {
+                $this->mapper->getSalaIdFromNome($roomName);
+            } catch (Exception $e) {
+                $unmappableRooms[] = $roomName;
             }
         }
 
-        return array_unique($unmappableRooms);
+        // Log das salas ignoradas para transparência
+        if (!empty($ignoredRooms)) {
+            $this->info("  ℹ️  Salas ignoradas (configuradas como não mapeáveis): " . implode(', ', $ignoredRooms));
+        }
+
+        return $unmappableRooms;
     }
 
     /**
@@ -415,6 +493,11 @@ class MigrateReservationsToSalas extends Command
 
         if ($schoolTermId = $this->option('school-term-id')) {
             $query->where('school_term_id', $schoolTermId);
+        } else {
+            $latestSchoolTerm = SchoolTerm::getLatest();
+            if ($latestSchoolTerm) {
+                $query->where('school_term_id', $latestSchoolTerm->id);
+            }
         }
 
         if ($roomId = $this->option('room-id')) {
@@ -435,18 +518,9 @@ class MigrateReservationsToSalas extends Command
         foreach ($batch as $schoolClass) {
             try {
                 $this->processSingleSchoolClass($schoolClass);
-                $this->statistics['processed_classes']++;
-                $this->statistics['successful_migrations']++;
-                
             } catch (Exception $e) {
-                $this->statistics['failed_migrations']++;
-                $this->logError('school_class_migration_error', $e, [
-                    'school_class_id' => $schoolClass->id,
-                    'disciplina' => $schoolClass->coddis,
-                    'sala' => $schoolClass->room->nome ?? 'N/A'
-                ]);
-                
-                // Não interromper o lote por falha individual
+                // A falha já foi registrada dentro de processSingleSchoolClass
+                // O importante é continuar o lote
             }
             
             $progressBar->advance();
@@ -454,22 +528,61 @@ class MigrateReservationsToSalas extends Command
     }
 
     /**
-     * Process migration for a single school class
+     * Process migration for a single school class, handling multiple schedules.
      *
      * @param SchoolClass $schoolClass
      */
     private function processSingleSchoolClass(SchoolClass $schoolClass): void
     {
         if ($this->isDryRun) {
-            // Simular processamento
-            $payload = $this->mapper->mapSchoolClassToReservationPayload($schoolClass);
+            $this->statistics['processed_classes']++;
+            $this->statistics['successful_migrations']++;
             $this->statistics['dry_run_validations']++;
             return;
         }
 
-        // Migração real
-        $reservations = $this->reservationService->createReservationsFromSchoolClass($schoolClass);
-        $this->statistics['created_reservations'] += count($reservations);
+        $schedules = $schoolClass->classschedules;
+
+        if ($schedules->isEmpty()) {
+            $this->statistics['failed_migrations']++;
+            $this->logError('school_class_migration_error', new Exception('Turma sem horários definidos, não pode ser migrada.'), [
+                'school_class_id' => $schoolClass->id,
+                'disciplina' => $schoolClass->coddis,
+            ]);
+            return;
+        }
+
+        $allSchedulesSucceeded = true;
+
+        foreach ($schedules as $schedule) {
+            try {
+                // Create a temporary clone to isolate the current schedule
+                $tempSchoolClass = clone $schoolClass;
+                // CRITICAL FIX: Set the relation to a collection with only the current schedule
+                $tempSchoolClass->setRelation('classschedules', collect([$schedule]));
+
+                $reservations = $this->reservationService->createReservationsFromSchoolClass($tempSchoolClass);
+                $this->statistics['created_reservations'] += count($reservations);
+
+            } catch (Exception $e) {
+                $allSchedulesSucceeded = false;
+                $this->logError('school_class_schedule_migration_error', $e, [
+                    'school_class_id' => $schoolClass->id,
+                    'disciplina' => $schoolClass->coddis,
+                    'sala' => $schoolClass->room->nome ?? 'N/A',
+                    'schedule_details' => $schedule->toArray(),
+                ]);
+                // Break the loop for this class on the first error to avoid partial migrations
+                break; 
+            }
+        }
+
+        $this->statistics['processed_classes']++;
+        if ($allSchedulesSucceeded) {
+            $this->statistics['successful_migrations']++;
+        } else {
+            $this->statistics['failed_migrations']++;
+        }
     }
 
     /**

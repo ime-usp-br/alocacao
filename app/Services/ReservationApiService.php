@@ -43,8 +43,11 @@ class ReservationApiService
             // Validar que a turma tem sala alocada
             $this->validateSchoolClass($schoolclass);
 
+            // Extract current schedule for multi-schedule context (from temp clone)
+            $currentSchedule = $schoolclass->classschedules->first();
+
             // Mapear SchoolClass para payload da API Salas
-            $payload = $this->reservationMapper->mapSchoolClassToReservationPayload($schoolclass);
+            $payload = $this->reservationMapper->mapSchoolClassToReservationPayload($schoolclass, $currentSchedule);
 
             $debugContext = array_merge($context, [
                 'payload' => $payload,
@@ -489,10 +492,10 @@ class ReservationApiService
         
         try {
             // Try to authenticate - this validates both connectivity and credentials
-            $response = $this->salasApiClient->get('/api/v1/health');
+            $response = $this->salasApiClient->get('/api/v1/auth/user');
             
-            // Check if response indicates API is healthy
-            $isHealthy = isset($response['status']) && $response['status'] === 'ok';
+            // Check if response indicates API is healthy (authenticated user data)
+            $isHealthy = isset($response['data']['id']);
             
             $this->log($isHealthy ? 'info' : 'warning', 'Verificação de saúde da API Salas concluída', [
                 'api_healthy' => $isHealthy,
