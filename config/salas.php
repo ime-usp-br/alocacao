@@ -117,6 +117,34 @@ return [
             'Auditório Antonio Gilioli' => 'Auditório Antonio Gilioli',
         ],
         'format_4_chars' => true, // B123 -> B0123 for rooms with 4 chars
+        
+        /*
+        |--------------------------------------------------------------------------
+        | Salas Ignoradas (Não Mapeáveis)
+        |--------------------------------------------------------------------------
+        |
+        | Lista de salas que devem ser ignoradas durante o processo de migração
+        | porque não existem no sistema Salas ou são salas virtuais/externas.
+        |
+        | Atualizada em 2025-01-04 após análise completa dos sistemas:
+        | - 37 salas no sistema alocacao
+        | - 28 salas no sistema salas  
+        | - 26 salas com mapeamento exato
+        | - 11 salas que devem ser ignoradas (listadas abaixo)
+        |
+        */
+        'ignored_rooms' => [
+            'Online',                   // Sala virtual - não existe fisicamente
+            'A251(CEA)',               // Sala com parênteses - não existe na API Salas
+            'Auditório do CCSL',       // Auditório externo ao IME
+            'Auditório do InovaUSP',   // Auditório externo ao IME
+            'Auditório Imre Simon',    // Auditório externo ao IME
+            'CEC02',                   // Salas do CEC - não fazem parte do sistema Salas
+            'CEC04',                   // Salas do CEC - não fazem parte do sistema Salas
+            'CEC05',                   // Salas do CEC - não fazem parte do sistema Salas
+            'CEC06',                   // Salas do CEC - não fazem parte do sistema Salas
+            'B04',                     // Sala existe no alocacao mas não no sistema Salas
+        ],
     ],
 
     /*

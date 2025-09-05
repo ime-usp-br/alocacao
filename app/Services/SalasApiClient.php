@@ -234,7 +234,14 @@ class SalasApiClient
                 // Success - record in circuit breaker
                 $this->circuitBreaker->recordSuccess();
                 
-                return $response->json();
+                $jsonData = $response->json();
+                
+                // Ensure we always return an array
+                if (!is_array($jsonData)) {
+                    throw new Exception('Invalid JSON response received from API');
+                }
+                
+                return $jsonData;
 
             } catch (ConnectionException $e) {
                 $exception = new Exception('Connection failed: ' . $e->getMessage());
@@ -324,20 +331,79 @@ class SalasApiClient
                     throw $e;
                 }
 
-                $currentDelay = min($delay * pow($multiplier, $i - 1), $maxDelay);
+                // Check if this is a rate limiting error
+                $isRateLimit = $this->isRateLimitError($e);
+                $retryAfter = $this->extractRetryAfter($e);
                 
-                $this->log('warning', 'Request failed, retrying', [
-                    'attempt' => $i,
-                    'max_attempts' => $attempts,
-                    'delay_seconds' => $currentDelay,
-                    'error' => $e->getMessage()
-                ]);
+                if ($isRateLimit && $retryAfter > 0) {
+                    // Use server-specified retry delay for rate limiting
+                    $currentDelay = min($retryAfter, $this->config['retry']['max_rate_limit_delay'] ?? 120);
+                    
+                    $this->log('warning', 'Rate limit exceeded, waiting as instructed by server', [
+                        'attempt' => $i,
+                        'max_attempts' => $attempts,
+                        'retry_after_seconds' => $retryAfter,
+                        'actual_delay_seconds' => $currentDelay,
+                        'error' => $e->getMessage()
+                    ]);
+                } else {
+                    // Use exponential backoff for other errors
+                    $currentDelay = min($delay * pow($multiplier, $i - 1), $maxDelay);
+                    
+                    $this->log('warning', 'Request failed, retrying with exponential backoff', [
+                        'attempt' => $i,
+                        'max_attempts' => $attempts,
+                        'delay_seconds' => $currentDelay,
+                        'error' => $e->getMessage()
+                    ]);
+                }
 
                 sleep($currentDelay);
             }
         }
 
         throw new Exception('Retry mechanism failed');
+    }
+
+    /**
+     * Check if exception is rate limiting related
+     *
+     * @param Exception $e
+     * @return bool
+     */
+    private function isRateLimitError(Exception $e): bool
+    {
+        $message = strtolower($e->getMessage());
+        return strpos($message, 'rate limit') !== false || 
+               strpos($message, '429') !== false ||
+               strpos($message, 'too many') !== false;
+    }
+
+    /**
+     * Extract retry-after value from exception
+     *
+     * @param Exception $e
+     * @return int
+     */
+    private function extractRetryAfter(Exception $e): int
+    {
+        $message = $e->getMessage();
+        
+        // Try to extract "Retry after X seconds" from message
+        if (preg_match('/retry after (\d+) seconds/i', $message, $matches)) {
+            return (int) $matches[1];
+        }
+        
+        // Try to extract just numbers that might be retry-after value
+        if (preg_match('/(\d+)/', $message, $matches)) {
+            $value = (int) $matches[1];
+            // Only consider reasonable retry-after values (1-300 seconds)
+            if ($value >= 1 && $value <= 300) {
+                return $value;
+            }
+        }
+        
+        return 0;
     }
 
     /**
