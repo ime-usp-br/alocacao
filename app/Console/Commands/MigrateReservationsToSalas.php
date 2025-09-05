@@ -489,6 +489,11 @@ class MigrateReservationsToSalas extends Command
     {
         $query = SchoolClass::whereHas('room')
             ->whereHas('classschedules')
+            // Filtrar turmas de salas ignoradas (configuradas como não mapeáveis)
+            ->whereHas('room', function($roomQuery) {
+                $ignoredRooms = config('salas.room_mapping.ignored_rooms', []);
+                $roomQuery->whereNotIn('nome', $ignoredRooms);
+            })
             ->with(['room', 'classschedules', 'schoolterm', 'instructors']);
 
         if ($schoolTermId = $this->option('school-term-id')) {
