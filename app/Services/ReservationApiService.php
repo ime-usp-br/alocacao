@@ -477,6 +477,64 @@ class ReservationApiService
     }
 
     /**
+     * Create reservations from Urano data
+     *
+     * @param array $uranoData Transformed Urano reservation data
+     * @return array Array of created reservations
+     * @throws Exception When reservation creation fails
+     */
+    public function createReservationsFromUranoData(array $uranoData): array
+    {
+        $context = $this->buildUranoDataContext($uranoData);
+        $context['operation'] = 'create_from_urano';
+
+        $this->log('info', 'Iniciando criação de reserva a partir de dados do Urano', $context);
+
+        try {
+            // Mapear dados do Urano para payload da API Salas
+            $payload = $this->reservationMapper->mapUranoDataToReservationPayload($uranoData);
+
+            // Adicionar metadados da operação
+            $payload['metadata'] = [
+                'source' => 'urano_import',
+                'original_reserva_id' => $uranoData['reserva_id'],
+                'original_requisicao_id' => $uranoData['requisicao_id'],
+                'import_timestamp' => now()->toISOString()
+            ];
+
+            $context['api_payload'] = $payload;
+            $this->log('debug', 'Payload da API Salas preparado', $context);
+
+            // Criar reserva via API Salas
+            $reservation = $this->salasApiClient->post('/api/v1/reservas', $payload);
+
+            if (!$reservation || !isset($reservation['data']['id'])) {
+                throw new Exception('Resposta inválida da API Salas: reserva não foi criada');
+            }
+
+            $context['reservation_created'] = [
+                'api_id' => $reservation['data']['id'],
+                'status' => $reservation['data']['status'] ?? 'unknown'
+            ];
+
+            $this->log('info', 'Reserva criada com sucesso via API Salas', $context);
+
+            return [$reservation['data']];
+
+        } catch (Exception $e) {
+            $context['error'] = [
+                'message' => $e->getMessage(),
+                'class' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ];
+
+            $this->log('error', 'Falha na criação de reserva a partir de dados do Urano', $context);
+            throw $e;
+        }
+    }
+
+    /**
      * Check API connectivity and health
      * 
      * This method performs a lightweight health check to validate:
@@ -617,6 +675,31 @@ class ReservationApiService
         }
 
         return $context;
+    }
+
+    /**
+     * Extract complete context from Urano data for logging
+     *
+     * @param array $uranoData
+     * @return array Complete context with Urano reservation information
+     */
+    private function buildUranoDataContext(array $uranoData): array
+    {
+        return [
+            'urano_data' => [
+                'reserva_id' => $uranoData['reserva_id'] ?? null,
+                'requisicao_id' => $uranoData['requisicao_id'] ?? null,
+                'data' => $uranoData['data'] ?? null,
+                'hora_inicio' => $uranoData['hora_inicio'] ?? null,
+                'hora_fim' => $uranoData['hora_fim'] ?? null,
+                'titulo' => $uranoData['titulo'] ?? null,
+                'solicitante' => $uranoData['solicitante'] ?? null,
+                'sala_numero' => $uranoData['sala_numero'] ?? null,
+                'sala_nome' => $uranoData['sala_nome'] ?? null,
+                'participantes' => $uranoData['participantes'] ?? null,
+                'atividade_regular' => $uranoData['atividade_regular'] ?? false
+            ]
+        ];
     }
 
     /**

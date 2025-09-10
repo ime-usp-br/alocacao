@@ -428,4 +428,124 @@ class ReservationMapper
             return false;
         }
     }
+
+    /**
+     * Map Urano data to Salas API reservation payload
+     *
+     * @param array $uranoData Transformed Urano reservation data
+     * @return array
+     * @throws Exception
+     */
+    public function mapUranoDataToReservationPayload(array $uranoData): array
+    {
+        // Validate required fields
+        $requiredFields = ['data', 'hora_inicio', 'hora_fim', 'sala_nome', 'titulo', 'solicitante'];
+        foreach ($requiredFields as $field) {
+            if (!isset($uranoData[$field]) || empty($uranoData[$field])) {
+                throw new Exception("Campo obrigatório ausente nos dados do Urano: {$field}");
+            }
+        }
+
+        $payload = [
+            'nome' => $this->generateUranoReservationName($uranoData),
+            'data' => Carbon::parse($uranoData['data'])->format('Y-m-d'),
+            'horario_inicio' => $this->formatUranoTime($uranoData['hora_inicio']),
+            'horario_fim' => $this->formatUranoTime($uranoData['hora_fim']),
+            'sala_id' => $this->getSalaIdFromNome($uranoData['sala_nome']),
+            'finalidade_id' => 1, // Graduação (padrão conforme AC2)
+            'tipo_responsaveis' => 'eu', // Padrão conforme AC2
+            'observacoes' => $this->generateUranoObservations($uranoData),
+        ];
+
+        // Add recurrence if it's a regular activity
+        if (isset($uranoData['atividade_regular']) && $uranoData['atividade_regular']) {
+            // For Urano imports, we typically create single reservations
+            // rather than recurring ones to maintain data integrity
+            $payload['recorrencia'] = null;
+        }
+
+        $this->log('debug', 'Payload da API Salas criado a partir de dados do Urano', [
+            'urano_data' => $uranoData,
+            'payload' => $payload
+        ]);
+
+        return $payload;
+    }
+
+    /**
+     * Generate reservation name from Urano data
+     *
+     * @param array $uranoData
+     * @return string
+     */
+    private function generateUranoReservationName(array $uranoData): string
+    {
+        $name = $uranoData['titulo'];
+        
+        if (isset($uranoData['solicitante']) && !empty($uranoData['solicitante'])) {
+            $name .= " - " . $uranoData['solicitante'];
+        }
+
+        // Limit name length for API compatibility
+        if (strlen($name) > 100) {
+            $name = substr($name, 0, 97) . '...';
+        }
+
+        return $name;
+    }
+
+    /**
+     * Format Urano time to API format
+     *
+     * @param string $uranoTime Time from Urano (can be various formats)
+     * @return string Formatted time (HH:MM)
+     */
+    private function formatUranoTime(string $uranoTime): string
+    {
+        try {
+            // Handle various Urano time formats
+            if (strpos($uranoTime, ':') !== false) {
+                // Already in HH:MM or HH:MM:SS format
+                $parts = explode(':', $uranoTime);
+                return sprintf('%02d:%02d', (int)$parts[0], (int)$parts[1]);
+            } else {
+                // Handle other possible formats
+                $carbon = Carbon::parse($uranoTime);
+                return $carbon->format('H:i');
+            }
+        } catch (Exception $e) {
+            throw new Exception("Formato de hora inválido no Urano: {$uranoTime}");
+        }
+    }
+
+    /**
+     * Generate observations from Urano data
+     *
+     * @param array $uranoData
+     * @return string
+     */
+    private function generateUranoObservations(array $uranoData): string
+    {
+        $observations = [];
+
+        $observations[] = "Importado do sistema Urano";
+        
+        if (isset($uranoData['reserva_id'])) {
+            $observations[] = "ID Reserva Urano: {$uranoData['reserva_id']}";
+        }
+        
+        if (isset($uranoData['requisicao_id'])) {
+            $observations[] = "ID Requisição Urano: {$uranoData['requisicao_id']}";
+        }
+
+        if (isset($uranoData['participantes']) && $uranoData['participantes'] > 0) {
+            $observations[] = "Participantes: {$uranoData['participantes']}";
+        }
+
+        if (isset($uranoData['email']) && !empty($uranoData['email'])) {
+            $observations[] = "Contato: {$uranoData['email']}";
+        }
+
+        return implode("\n", $observations);
+    }
 }
