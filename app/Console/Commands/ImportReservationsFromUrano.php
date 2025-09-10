@@ -66,7 +66,7 @@ class ImportReservationsFromUrano extends Command
      */
     public function handle()
     {
-        $this->info('🔄 AC1: Import Reservations from Urano to Salas API');
+        $this->info('🔄 Import Reservations from Urano to Salas API');
         $this->newLine();
 
         $this->isDryRun = $this->option('dry-run');
@@ -102,8 +102,9 @@ class ImportReservationsFromUrano extends Command
                 }
             }
 
-            // Step 4: Two-Phase Processing (AC2: Verification → Creation)
+            // Step 4: Two-Phase Processing (Verification → Creation)
             $this->info('🔄 Step 3: Two-Phase Processing (Verification → Creation)');
+            $this->info('🛡️ All or Nothing Policy - Validation will halt immediately on first error');
             if (!$this->processUranoReservations($uranoReservations)) {
                 return 1;
             }
@@ -316,7 +317,7 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
-     * Process Urano reservations using two-phase logic (AC2)
+     * Process Urano reservations using two-phase logic
      *
      * @param \Illuminate\Support\Collection $uranoReservations
      * @return bool
@@ -346,13 +347,262 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
-     * Verification phase: validate all Urano reservations before creation (AC2)
+     * Fase de Verificação - Connect to Urano database and map individual records
+     * This method implements the data mapping logic for Urano imports
+     *
+     * @return array Verification result with mapped reservations and statistics
+     */
+    private function faseVerificacao(): array
+    {
+        $this->info('🔍 Iniciando fase de verificação com mapeamento Urano');
+        
+        $result = [
+            'success' => false,
+            'mapped_reservations' => [],
+            'validation_errors' => [],
+            'statistics' => [
+                'total_found' => 0,
+                'successfully_mapped' => 0,
+                'mapping_failures' => 0,
+                'status_approved' => 0,
+                'status_pending' => 0
+            ]
+        ];
+
+        try {
+            // Step 1: Connect to Urano database and read all future reservations
+            $this->info('  🔸 Conectando ao banco Urano e lendo reservas futuras...');
+            $uranoReservations = $this->loadFutureUranoReservations();
+            
+            if ($uranoReservations->isEmpty()) {
+                $this->warn('⚠️ Nenhuma reserva futura encontrada no Urano');
+                $result['success'] = true; // Empty is still success
+                return $result;
+            }
+
+            $result['statistics']['total_found'] = $uranoReservations->count();
+            $this->info("  ✅ Encontradas {$uranoReservations->count()} reservas futuras no Urano");
+
+            // Step 2: Map each record individually using existing ReservationMapper
+            $this->info('  🔸 Mapeando registros individuais...');
+            $progressBar = $this->output->createProgressBar($uranoReservations->count());
+            $progressBar->setFormat('debug');
+
+            foreach ($uranoReservations as $uranoRecord) {
+                $mappingResult = $this->mapSingleUranoRecord($uranoRecord);
+                
+                if ($mappingResult['success']) {
+                    $result['mapped_reservations'][] = $mappingResult['mapped_data'];
+                    $result['statistics']['successfully_mapped']++;
+                    
+                    // Count status distribution
+                    $status = $mappingResult['mapped_data']['status'];
+                    if ($status === 'aprovada') {
+                        $result['statistics']['status_approved']++;
+                    } else {
+                        $result['statistics']['status_pending']++;
+                    }
+                } else {
+                    $result['validation_errors'] = array_merge($result['validation_errors'], $mappingResult['errors']);
+                    $result['statistics']['mapping_failures']++;
+                    
+                    // All or Nothing Policy - halt on first error
+                    $this->logError('mapping_halt', new Exception('Mapping halted on first error'), [
+                        'operation_id' => $this->operationId,
+                        'total_found' => $result['statistics']['total_found'],
+                        'processed_so_far' => $result['statistics']['successfully_mapped'] + $result['statistics']['mapping_failures'],
+                        'first_error_context' => $mappingResult['errors'][0] ?? 'unknown',
+                        'policy_triggered' => true
+                    ]);
+                    break;
+                }
+                $progressBar->advance();
+            }
+
+            $progressBar->finish();
+            $this->newLine();
+
+            // Step 3: Determine overall success
+            $result['success'] = $result['statistics']['mapping_failures'] === 0;
+
+            $this->logError('fase_verificacao_completed', new Exception('Fase verificação completed'), [
+                'operation_id' => $this->operationId,
+                'total_found' => $result['statistics']['total_found'],
+                'successfully_mapped' => $result['statistics']['successfully_mapped'],
+                'mapping_failures' => $result['statistics']['mapping_failures'],
+                'status_approved' => $result['statistics']['status_approved'],
+                'status_pending' => $result['statistics']['status_pending'],
+                'success' => $result['success']
+            ]);
+
+            return $result;
+
+        } catch (Exception $e) {
+            $result['validation_errors'][] = [
+                'type' => 'system_error',
+                'message' => 'Critical error during fase verificação: ' . $e->getMessage(),
+                'severity' => 'critical'
+            ];
+
+            $this->logError('fase_verificacao_error', $e);
+            return $result;
+        }
+    }
+
+    /**
+     * Load future reservations from Urano database with proper joins
+     * Implements the database connection and reading logic for Urano imports
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    private function loadFutureUranoReservations()
+    {
+        $this->info('🔄 Construindo consulta Urano com junções REQUISICAO + RESERVA + SALA...');
+        
+        $query = DB::connection('urano')
+            ->table('RESERVA as res')
+            ->join('REQUISICAO as req', 'res.requisicao_id', '=', 'req.id')
+            ->join('SALA as s', 'res.sala_numero', '=', 's.numero')
+            ->select([
+                'res.id as reserva_id',
+                'res.data',
+                'res.hi',
+                'res.hf',
+                'res.atividadeRegular',
+                'req.id as requisicao_id',
+                'req.titulo',
+                'req.email',
+                'req.solicitante',
+                'req.participantes',
+                'req.status', // Status mapping requirement
+                'req.dataCadastro',
+                's.numero as sala_numero',
+                's.nome as sala_nome',
+                's.assentos as sala_assentos'
+            ])
+            // Only future reservations
+            ->whereRaw('res.data >= CURDATE()');
+
+        // Apply existing filters if present
+        $this->applyFiltersToQuery($query);
+
+        $reservations = $query->get();
+        
+        $this->info("  ✅ Carregadas {$reservations->count()} reservas futuras do Urano");
+        
+        return $reservations;
+    }
+
+    /**
+     * Map single Urano record with individual mapping logic
+     * Implements status mapping and uses default finalidade_id = 1
+     *
+     * @param \stdClass $uranoRecord
+     * @return array
+     */
+    private function mapSingleUranoRecord($uranoRecord): array
+    {
+        $result = [
+            'success' => false,
+            'mapped_data' => null,
+            'errors' => []
+        ];
+
+        try {
+            // Transform Urano record to format expected by ReservationMapper
+            $transformedData = [
+                'reserva_id' => $uranoRecord->reserva_id,
+                'data' => $uranoRecord->data,
+                'hora_inicio' => $uranoRecord->hi,
+                'hora_fim' => $uranoRecord->hf,
+                'titulo' => $uranoRecord->titulo,
+                'solicitante' => $uranoRecord->solicitante,
+                'email' => $uranoRecord->email,
+                'participantes' => $uranoRecord->participantes,
+                'sala_numero' => $uranoRecord->sala_numero,
+                'sala_nome' => $uranoRecord->sala_nome,
+                'atividade_regular' => (bool) $uranoRecord->atividadeRegular,
+                'requisicao_id' => $uranoRecord->requisicao_id,
+                // Status mapping from REQUISICAO.status
+                'urano_status' => $uranoRecord->status
+            ];
+
+            // Use existing ReservationMapper to create API payload
+            $apiPayload = $this->mapper->mapUranoDataToReservationPayload($transformedData);
+            
+            // Apply status mapping and ensure finalidade_id = 1
+            $apiPayload['status'] = $this->mapUranoStatusToSalasStatus($uranoRecord->status);
+            $apiPayload['finalidade_id'] = 1; // Default finalidade_id requirement
+            
+            $result['mapped_data'] = array_merge($transformedData, [
+                'api_payload' => $apiPayload,
+                'status' => $apiPayload['status']
+            ]);
+            $result['success'] = true;
+
+        } catch (Exception $e) {
+            $result['errors'][] = [
+                'type' => 'mapping_error',
+                'message' => 'Failed to map Urano record: ' . $e->getMessage(),
+                'context' => [
+                    'reserva_id' => $uranoRecord->reserva_id ?? 'unknown',
+                    'requisicao_id' => $uranoRecord->requisicao_id ?? 'unknown',
+                    'titulo' => $uranoRecord->titulo ?? 'unknown'
+                ]
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Map REQUISICAO.status to Salas API status
+     *
+     * @param int $uranoStatus Status from REQUISICAO table
+     * @return string 'aprovada' or 'pendente'
+     */
+    private function mapUranoStatusToSalasStatus(int $uranoStatus): string
+    {
+        // Map REQUISICAO.status to 'aprovada' or 'pendente'
+        // Based on existing logic in line 315: status 3 means approved
+        return ($uranoStatus === 3) ? 'aprovada' : 'pendente';
+    }
+
+    /**
+     * Verification phase: validate all Urano reservations before creation
      *
      * @param \Illuminate\Support\Collection $uranoReservations
      * @return array Verification result with validated reservations and statistics
      */
     private function verifyUranoReservations($uranoReservations): array
     {
+        // Execute fase verificação first - connect to Urano database and map records
+        $this->info('🔍 Executando fase de verificação conforme requisitos');
+        $faseVerificacaoResult = $this->faseVerificacao();
+        
+        if (!$faseVerificacaoResult['success']) {
+            $this->error('❌ Fase de verificação falhou');
+            return [
+                'success' => false,
+                'verified_reservations' => [],
+                'validation_errors' => $faseVerificacaoResult['validation_errors'],
+                'api_ready' => false,
+                'room_mappings' => [],
+                'statistics' => array_merge([
+                    'total_processed' => $uranoReservations->count(),
+                    'passed_validation' => 0,
+                    'failed_validation' => 0,
+                    'unmappable_rooms' => 0,
+                    'time_conflicts' => 0,
+                    'data_validation_errors' => 0,
+                    'api_validation_errors' => 0
+                ], ['fase_verificacao' => $faseVerificacaoResult['statistics']])
+            ];
+        }
+
+        $this->info("✅ Fase verificação concluída com sucesso - {$faseVerificacaoResult['statistics']['successfully_mapped']} registros mapeados");
+        
+        // Continue with original verification logic using the provided uranoReservations parameter
         $result = [
             'success' => false,
             'verified_reservations' => [],
@@ -366,7 +616,9 @@ class ImportReservationsFromUrano extends Command
                 'unmappable_rooms' => 0,
                 'time_conflicts' => 0,
                 'data_validation_errors' => 0,
-                'api_validation_errors' => 0
+                'api_validation_errors' => 0,
+                // Include fase verificação statistics
+                'fase_verificacao' => $faseVerificacaoResult['statistics']
             ]
         ];
 
@@ -421,6 +673,16 @@ class ImportReservationsFromUrano extends Command
                                 break;
                         }
                     }
+                    
+                    // All or Nothing Policy - Halt immediately on first validation error
+                    $this->logError('validation_halt', new Exception('Validation halted on first error'), [
+                        'operation_id' => $this->operationId,
+                        'total_processed' => $result['statistics']['total_processed'],
+                        'processed_so_far' => $result['statistics']['passed_validation'] + $result['statistics']['failed_validation'],
+                        'first_error_types' => array_unique(array_column($validationResult['errors'], 'type')),
+                        'policy_triggered' => true
+                    ]);
+                    break;
                 }
                 $progressBar->advance();
             }
@@ -746,6 +1008,7 @@ class ImportReservationsFromUrano extends Command
     private function displayVerificationErrors(array $verificationResult): void
     {
         $this->error('❌ Verification phase failed');
+        $this->warn('🛡️ All or Nothing Policy: Validation halted immediately on first error to prevent creation phase');
         $this->newLine();
 
         $stats = $verificationResult['statistics'];
@@ -792,7 +1055,7 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
-     * Creation phase: create verified reservations in Salas system (AC2)
+     * Creation phase: create verified reservations in Salas system
      *
      * @param array $verifiedReservations Array of pre-validated reservations
      * @param array $roomMappings Cached room mappings
@@ -1104,7 +1367,7 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
-     * Generate final import report with two-phase statistics (AC2)
+     * Generate final import report with two-phase statistics
      */
     private function generateFinalReport(): void
     {
@@ -1239,7 +1502,7 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
-     * Initialize statistics tracking with two-phase support (AC2)
+     * Initialize statistics tracking with two-phase support
      */
     private function initializeStatistics(): void
     {
@@ -1305,6 +1568,6 @@ class ImportReservationsFromUrano extends Command
             'statistics' => $this->statistics
         ]);
 
-        Log::error("Urano Import AC1 - $errorType", $logContext);
+        Log::error("Urano Import - $errorType", $logContext);
     }
 }
