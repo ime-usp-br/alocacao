@@ -551,6 +551,31 @@ class SalasApiClient
     }
 
     /**
+     * Query reservations by room and date using the protected API endpoint
+     * 
+     * @param int $salaId ID da sala
+     * @param string $data Data no formato Y-m-d
+     * @return array Reservas encontradas na data/sala especificada
+     * @throws Exception
+     */
+    public function getReservationsByRoomAndDate(int $salaId, string $data): array
+    {
+        $this->ensureAuthenticated();
+        
+        $params = [
+            'sala_id' => $salaId,
+            'data' => $data
+        ];
+        
+        $this->log('debug', 'Querying reservations by room and date', [
+            'sala_id' => $salaId,
+            'data' => $data
+        ]);
+        
+        return $this->makeRequest('GET', '/api/v1/reservas/by-room-and-date', $params);
+    }
+
+    /**
      * Create enhanced HTTP exception with context
      *
      * @param int $statusCode

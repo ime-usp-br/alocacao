@@ -507,11 +507,12 @@ class ReservationMapper
             if (strpos($uranoTime, ':') !== false) {
                 // Already in HH:MM or HH:MM:SS format
                 $parts = explode(':', $uranoTime);
-                return sprintf('%02d:%02d', (int)$parts[0], (int)$parts[1]);
+                // Use G:i format (no leading zero for hours) as required by Salas API
+                return sprintf('%d:%02d', (int)$parts[0], (int)$parts[1]);
             } else {
                 // Handle other possible formats
                 $carbon = Carbon::parse($uranoTime);
-                return $carbon->format('H:i');
+                return $carbon->format('G:i'); // G:i format for Salas API
             }
         } catch (Exception $e) {
             throw new Exception("Formato de hora inválido no Urano: {$uranoTime}");
