@@ -258,6 +258,11 @@ class ImportReservationsFromUrano extends Command
         // Apply filters
         $this->applyFiltersToQuery($query);
 
+        // If no start date was specified via other filters, default to future reservations.
+        if (!$this->option('date-from') && !$this->option('periodo-id')) {
+            $query->where('res.data', '>=', now()->format('Y-m-d'));
+        }
+
         $reservations = $query->get();
         
         $this->info("  ✅ Loaded {$reservations->count()} reservations from Urano");
@@ -311,9 +316,9 @@ class ImportReservationsFromUrano extends Command
             $this->info("  🔸 Filtered by requisition ID: {$requisicaoId}");
         }
 
-        // Only approved reservations (assuming status 3 means approved)
-        $query->where('req.status', 3);
-        $this->info("  🔸 Including only approved reservations (status = 3)");
+        // Only approved reservations (assuming status 1 means approved)
+        $query->where('req.status', 1);
+        $this->info("  🔸 Including only approved reservations (status = 1)");
     }
 
     /**
@@ -564,8 +569,8 @@ class ImportReservationsFromUrano extends Command
     private function mapUranoStatusToSalasStatus(int $uranoStatus): string
     {
         // Map REQUISICAO.status to 'aprovada' or 'pendente'
-        // Based on existing logic in line 315: status 3 means approved
-        return ($uranoStatus === 3) ? 'aprovada' : 'pendente';
+        // Status 1 means approved
+        return ($uranoStatus === 1) ? 'aprovada' : 'pendente';
     }
 
     /**
@@ -576,38 +581,12 @@ class ImportReservationsFromUrano extends Command
      */
     private function verifyUranoReservations($uranoReservations): array
     {
-        // Execute fase verificação first - connect to Urano database and map records
-        $this->info('🔍 Executando fase de verificação conforme requisitos');
-        $faseVerificacaoResult = $this->faseVerificacao();
+        $this->info('🔍 Executando fase de verificação otimizada');
         
-        if (!$faseVerificacaoResult['success']) {
-            $this->error('❌ Fase de verificação falhou');
-            return [
-                'success' => false,
-                'verified_reservations' => [],
-                'validation_errors' => $faseVerificacaoResult['validation_errors'],
-                'api_ready' => false,
-                'room_mappings' => [],
-                'statistics' => array_merge([
-                    'total_processed' => $uranoReservations->count(),
-                    'passed_validation' => 0,
-                    'failed_validation' => 0,
-                    'unmappable_rooms' => 0,
-                    'time_conflicts' => 0,
-                    'data_validation_errors' => 0,
-                    'api_validation_errors' => 0
-                ], ['fase_verificacao' => $faseVerificacaoResult['statistics']])
-            ];
-        }
-
-        $this->info("✅ Fase verificação concluída com sucesso - {$faseVerificacaoResult['statistics']['successfully_mapped']} registros mapeados");
-        
-        // Continue with original verification logic using the provided uranoReservations parameter
         $result = [
             'success' => false,
             'verified_reservations' => [],
             'validation_errors' => [],
-            'api_ready' => false,
             'room_mappings' => [],
             'statistics' => [
                 'total_processed' => $uranoReservations->count(),
@@ -616,38 +595,33 @@ class ImportReservationsFromUrano extends Command
                 'unmappable_rooms' => 0,
                 'time_conflicts' => 0,
                 'data_validation_errors' => 0,
-                'api_validation_errors' => 0,
-                // Include fase verificação statistics
-                'fase_verificacao' => $faseVerificacaoResult['statistics']
             ]
         ];
 
         try {
-            // Step 1: API Readiness Validation
-            $this->info('  🔸 Checking API connectivity and authentication...');
-            if (!$this->reservationService->checkApiHealth()) {
-                $result['validation_errors'][] = [
-                    'type' => 'api_connectivity',
-                    'message' => 'Salas API is not accessible or authentication failed',
-                    'severity' => 'critical'
-                ];
-                return $result;
-            }
-            $result['api_ready'] = true;
-            $this->info('    ✅ API connectivity verified');
-
-            // Step 2: Pre-load room mappings for efficiency
+            // Step 1: Pre-load room mappings
             $this->info('  🔸 Pre-loading room mappings...');
             $roomMappings = $this->preloadRoomMappings($uranoReservations);
             $result['room_mappings'] = $roomMappings;
 
-            // Step 3: Validate each reservation
-            $this->info('  🔸 Validating individual reservations...');
+            // Step 2: Pre-fetch existing reservations for conflict checking (Optimization)
+            $this->info('  🔸 Pre-fetching existing reservations for conflict checking...');
+            $existingReservationsCache = $this->prefetchExistingReservations($uranoReservations, $roomMappings);
+
+            // Step 3: Validate each reservation locally
+            $this->info('  🔸 Validating individual reservations locally...');
             $progressBar = $this->output->createProgressBar($uranoReservations->count());
             $progressBar->setFormat('debug');
 
             foreach ($uranoReservations as $uranoReservation) {
-                $validationResult = $this->validateSingleUranoReservation($uranoReservation, $roomMappings);
+                $roomName = $uranoReservation->sala_nome;
+                $salaId = $roomMappings[$roomName]['mappable'] ? $roomMappings[$roomName]['sala_id'] : null;
+                $data = $uranoReservation->data;
+                $cacheKey = $salaId ? "{$salaId}_{$data}" : null;
+                
+                $existingReservationsForDay = $cacheKey ? ($existingReservationsCache[$cacheKey] ?? []) : [];
+
+                $validationResult = $this->validateSingleUranoReservation($uranoReservation, $roomMappings, $existingReservationsForDay);
                 
                 if ($validationResult['valid']) {
                     $result['verified_reservations'][] = $validationResult['reservation'];
@@ -656,33 +630,14 @@ class ImportReservationsFromUrano extends Command
                     $result['validation_errors'] = array_merge($result['validation_errors'], $validationResult['errors']);
                     $result['statistics']['failed_validation']++;
                     
-                    // Update specific error counters
                     foreach ($validationResult['errors'] as $error) {
-                        switch ($error['type']) {
-                            case 'unmappable_room':
-                                $result['statistics']['unmappable_rooms']++;
-                                break;
-                            case 'time_conflict':
-                                $result['statistics']['time_conflicts']++;
-                                break;
-                            case 'data_validation':
-                                $result['statistics']['data_validation_errors']++;
-                                break;
-                            case 'api_validation':
-                                $result['statistics']['api_validation_errors']++;
-                                break;
+                        if (isset($result['statistics'][$error['type'] . 's'])) {
+                            $result['statistics'][$error['type'] . 's']++;
                         }
                     }
                     
-                    // All or Nothing Policy - Halt immediately on first validation error
-                    $this->logError('validation_halt', new Exception('Validation halted on first error'), [
-                        'operation_id' => $this->operationId,
-                        'total_processed' => $result['statistics']['total_processed'],
-                        'processed_so_far' => $result['statistics']['passed_validation'] + $result['statistics']['failed_validation'],
-                        'first_error_types' => array_unique(array_column($validationResult['errors'], 'type')),
-                        'policy_triggered' => true
-                    ]);
-                    break;
+                    $this->logError('validation_halt', new Exception('Validation halted on first error'), ['policy_triggered' => true]);
+                    break; // Halt on first error
                 }
                 $progressBar->advance();
             }
@@ -690,33 +645,62 @@ class ImportReservationsFromUrano extends Command
             $progressBar->finish();
             $this->newLine();
 
-            // Step 4: Determine overall success
             $result['success'] = $result['statistics']['failed_validation'] === 0;
-
-            // Update main statistics with verification results
             $this->statistics['verification_phase'] = $result['statistics'];
-            $this->statistics['processed_reservations'] = $result['statistics']['total_processed'];
-
-            $this->logError('verification_phase_completed', new Exception('Verification phase completed'), [
-                'operation_id' => $this->operationId,
-                'total_reservations' => $result['statistics']['total_processed'],
-                'passed_validation' => $result['statistics']['passed_validation'],
-                'failed_validation' => $result['statistics']['failed_validation'],
-                'success' => $result['success']
-            ]);
 
             return $result;
 
         } catch (Exception $e) {
-            $result['validation_errors'][] = [
-                'type' => 'system_error',
-                'message' => 'Critical error during verification: ' . $e->getMessage(),
-                'severity' => 'critical'
-            ];
-
+            $result['validation_errors'][] = ['type' => 'system_error', 'message' => $e->getMessage()];
             $this->logError('verification_phase_error', $e);
             return $result;
         }
+    }
+
+    /**
+     * Pre-fetches all existing reservations from the API for the given set of Urano reservations.
+     *
+     * @param \Illuminate\Support\Collection $uranoReservations
+     * @param array $roomMappings
+     * @return array
+     */
+    private function prefetchExistingReservations($uranoReservations, array $roomMappings): array
+    {
+        $requestsToMake = [];
+        foreach ($uranoReservations as $reservation) {
+            $roomName = $reservation->sala_nome;
+            if (isset($roomMappings[$roomName]) && $roomMappings[$roomName]['mappable']) {
+                $salaId = $roomMappings[$roomName]['sala_id'];
+                $data = $reservation->data;
+                $cacheKey = "{$salaId}_{$data}";
+                $requestsToMake[$cacheKey] = ['sala' => $salaId, 'data' => $data];
+            }
+        }
+
+        $this->info("    (Found " . count($requestsToMake) . " unique room/day combinations to check)");
+        $progressBar = $this->output->createProgressBar(count($requestsToMake));
+        $progressBar->setFormat('debug');
+
+        $cache = [];
+        foreach ($requestsToMake as $key => $params) {
+            try {
+                // Use the new protected API endpoint for better performance and higher rate limits
+                $response = $this->apiClient->getReservationsByRoomAndDate(
+                    $params['sala'], 
+                    $params['data']
+                );
+                $cache[$key] = $response['data'] ?? [];
+            } catch (Exception $e) {
+                $this->logError('prefetch_conflict_error', $e, $params);
+                $cache[$key] = []; // Assume no reservations on error
+            }
+            $progressBar->advance();
+        }
+
+        $progressBar->finish();
+        $this->newLine();
+
+        return $cache;
     }
 
     /**
@@ -761,7 +745,7 @@ class ImportReservationsFromUrano extends Command
      * @param array $roomMappings
      * @return array Validation result
      */
-    private function validateSingleUranoReservation($uranoReservation, array $roomMappings): array
+    private function validateSingleUranoReservation($uranoReservation, array $roomMappings, array $existingReservationsForDay): array
     {
         $result = [
             'valid' => false,
@@ -795,7 +779,7 @@ class ImportReservationsFromUrano extends Command
             $transformedData = $this->transformUranoReservation($uranoReservation);
             
             // Business rule validation (duplicates, conflicts)
-            $businessValidation = $this->validateBusinessRules($transformedData, $roomMappings[$roomName]['sala_id']);
+            $businessValidation = $this->validateBusinessRules($transformedData, $roomMappings[$roomName]['sala_id'], $existingReservationsForDay);
             if (!$businessValidation['valid']) {
                 $result['errors'] = array_merge($result['errors'], $businessValidation['errors']);
                 return $result;
@@ -922,13 +906,13 @@ class ImportReservationsFromUrano extends Command
      * @param int $salaId
      * @return array Validation result
      */
-    private function validateBusinessRules(array $transformedData, int $salaId): array
+    private function validateBusinessRules(array $transformedData, int $salaId, array $existingReservationsForDay): array
     {
         $errors = [];
 
         try {
-            // Check for time conflicts using existing Salas API integration
-            $conflicts = $this->checkReservationConflicts($salaId, $transformedData);
+            // Check for time conflicts using the pre-fetched data
+            $conflicts = $this->checkReservationConflicts($transformedData, $existingReservationsForDay);
             if (!empty($conflicts)) {
                 $errors[] = [
                     'type' => 'time_conflict',
@@ -942,7 +926,6 @@ class ImportReservationsFromUrano extends Command
             }
 
         } catch (Exception $e) {
-            // Log but don't fail - conflict detection is best effort
             $this->logError('conflict_detection_error', $e, [
                 'reserva_id' => $transformedData['reserva_id'],
                 'sala_id' => $salaId
@@ -956,48 +939,34 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
-     * Check for reservation conflicts using Salas API
+     * Check for reservation conflicts using a pre-fetched list of reservations for that day.
      *
-     * @param int $salaId
      * @param array $transformedData
+     * @param array $existingReservations
      * @return array Array of conflicting reservations
      */
-    private function checkReservationConflicts(int $salaId, array $transformedData): array
+    private function checkReservationConflicts(array $transformedData, array $existingReservations): array
     {
-        try {
-            $params = [
-                'sala' => $salaId,
-                'data' => $transformedData['data']
-            ];
+        $conflicts = [];
+        $requestStart = $transformedData['hora_inicio'];
+        $requestEnd = $transformedData['hora_fim'];
 
-            $response = $this->apiClient->get('/api/v1/reservas', $params);
-            $existingReservations = $response['data'] ?? [];
+        foreach ($existingReservations as $reservation) {
+            $existingStart = $reservation['horario_inicio'];
+            $existingEnd = $reservation['horario_fim'];
 
-            $conflicts = [];
-            $requestStart = $transformedData['hora_inicio'];
-            $requestEnd = $transformedData['hora_fim'];
-
-            foreach ($existingReservations as $reservation) {
-                $existingStart = $reservation['horario_inicio'];
-                $existingEnd = $reservation['horario_fim'];
-
-                // Check for time overlap
-                if (!($requestEnd <= $existingStart || $requestStart >= $existingEnd)) {
-                    $conflicts[] = [
-                        'id' => $reservation['id'],
-                        'nome' => $reservation['nome'],
-                        'horario_inicio' => $existingStart,
-                        'horario_fim' => $existingEnd
-                    ];
-                }
+            // Check for time overlap
+            if (!($requestEnd <= $existingStart || $requestStart >= $existingEnd)) {
+                $conflicts[] = [
+                    'id' => $reservation['id'],
+                    'nome' => $reservation['nome'],
+                    'horario_inicio' => $existingStart,
+                    'horario_fim' => $existingEnd
+                ];
             }
-
-            return $conflicts;
-
-        } catch (Exception $e) {
-            // Return empty array on error - conflict detection is best effort
-            return [];
         }
+
+        return $conflicts;
     }
 
     /**
@@ -1071,7 +1040,6 @@ class ImportReservationsFromUrano extends Command
         $totalReservations = count($verifiedReservations);
         $this->info("  🔸 Creating {$totalReservations} verified reservations...");
 
-        // Initialize creation statistics
         $creationStats = [
             'total_to_create' => $totalReservations,
             'successfully_created' => 0,
@@ -1079,9 +1047,10 @@ class ImportReservationsFromUrano extends Command
             'api_rate_limit_hits' => 0,
             'batch_errors' => 0
         ];
+        
+        $createdReservationIds = [];
 
         try {
-            // Process in batches respecting rate limits (30/min for reservations endpoint)
             $batches = array_chunk($verifiedReservations, $this->batchSize);
             $totalBatches = count($batches);
             
@@ -1093,156 +1062,153 @@ class ImportReservationsFromUrano extends Command
             foreach ($batches as $batch) {
                 $this->info("\n🔄 Processing creation batch $currentBatch/$totalBatches (" . count($batch) . " reservations)");
                 
-                try {
-                    $batchResult = $this->createReservationBatch($batch);
-                    
-                    $creationStats['successfully_created'] += $batchResult['created'];
-                    $creationStats['creation_failures'] += $batchResult['failed'];
-                    $creationStats['api_rate_limit_hits'] += $batchResult['rate_limited'];
-                    
-                    // Update overall statistics
-                    $this->statistics['successful_imports'] += $batchResult['created'];
-                    $this->statistics['failed_imports'] += $batchResult['failed'];
-                    $this->statistics['created_reservations'] += $batchResult['created'];
-                    
-                    // Advance progress bar
-                    $progressBar->advance(count($batch));
-                    
-                    $currentBatch++;
-                    
-                    // Rate limiting compliance: brief pause between batches
-                    if ($currentBatch <= $totalBatches) {
-                        sleep(2); // 2 second pause to stay under 30/min limit
-                    }
-                    
-                } catch (Exception $e) {
-                    $this->error("\n❌ Error in creation batch $currentBatch: {$e->getMessage()}");
-                    $creationStats['batch_errors']++;
-                    
-                    // Log the batch error with context
-                    $this->logError('creation_batch_error', $e, [
-                        'batch_number' => $currentBatch,
-                        'batch_size' => count($batch),
-                        'operation_id' => $this->operationId
-                    ]);
-                    
-                    if ($creationStats['batch_errors'] >= 3) {
-                        $this->error('❌ Too many creation batch errors. Aborting remaining import.');
-                        break;
-                    }
-                    
-                    $this->warn('⚠️ Continuing with next batch...');
-                    $currentBatch++;
+                $batchResult = $this->createReservationBatch($batch, $createdReservationIds);
+                
+                $creationStats['successfully_created'] += $batchResult['created'];
+                
+                $this->statistics['successful_imports'] += $batchResult['created'];
+                $this->statistics['created_reservations'] += $batchResult['created'];
+                
+                $progressBar->advance(count($batch));
+                
+                $currentBatch++;
+                
+                if ($currentBatch <= $totalBatches) {
+                    sleep(2);
                 }
             }
             
             $progressBar->finish();
             $this->newLine(2);
             
-            // Display creation summary
             $this->displayCreationSummary($creationStats);
-            
-            // Update main statistics with creation results
             $this->statistics['creation_phase'] = $creationStats;
             
-            // Log creation phase completion
             $this->logError('creation_phase_completed', new Exception('Creation phase completed'), [
                 'operation_id' => $this->operationId,
                 'total_to_create' => $creationStats['total_to_create'],
                 'successfully_created' => $creationStats['successfully_created'],
-                'creation_failures' => $creationStats['creation_failures'],
-                'batch_errors' => $creationStats['batch_errors'],
-                'success_rate' => $creationStats['total_to_create'] > 0 ? 
-                    ($creationStats['successfully_created'] / $creationStats['total_to_create']) * 100 : 0
+                'creation_failures' => 0, // Failures now trigger rollback
+                'success_rate' => 100
             ]);
             
-            // Consider operation successful if most reservations were created
-            $successThreshold = 0.8; // 80% success rate
-            $actualSuccessRate = $creationStats['total_to_create'] > 0 ? 
-                ($creationStats['successfully_created'] / $creationStats['total_to_create']) : 0;
-                
-            return $actualSuccessRate >= $successThreshold;
+            return true;
             
         } catch (Exception $e) {
+            $creationStats['creation_failures'] = $totalReservations - $creationStats['successfully_created'];
+            $this->statistics['failed_imports'] += $creationStats['creation_failures'];
+
             $this->error("❌ Critical error during creation phase: {$e->getMessage()}");
             $this->logError('creation_phase_critical_error', $e, [
                 'operation_id' => $this->operationId,
                 'creation_stats' => $creationStats
             ]);
+
+            $this->performRollback($createdReservationIds);
+
             return false;
         }
     }
 
     /**
-     * Create a batch of verified reservations
+     * Create a batch of verified reservations. Throws exception on failure.
      *
      * @param array $batch Array of verified reservation data
+     * @param array &$createdReservationIds Array to store IDs of created reservations for rollback
      * @return array Batch creation results
+     * @throws Exception
      */
-    private function createReservationBatch(array $batch): array
+    private function createReservationBatch(array $batch, array &$createdReservationIds): array
     {
-        $result = [
-            'created' => 0,
-            'failed' => 0,
-            'rate_limited' => 0
-        ];
+        $result = ['created' => 0];
 
         foreach ($batch as $verifiedReservation) {
-            try {
-                if ($this->isDryRun) {
-                    // Simulate creation in dry-run mode
-                    $result['created']++;
-                    $this->statistics['dry_run_validations']++;
-                    continue;
-                }
+            if ($this->isDryRun) {
+                $result['created']++;
+                $this->statistics['dry_run_validations']++;
+                continue;
+            }
 
-                $uranoData = $verifiedReservation['urano_data'];
-                
-                // Use existing service with pre-validated data
+            $uranoData = $verifiedReservation['urano_data'];
+            
+            try {
                 $reservation = $this->reservationService->createReservationsFromUranoData($uranoData);
                 
-                if ($reservation && !empty($reservation)) {
+                if ($reservation && !empty($reservation[0]['id'])) {
+                    $newId = $reservation[0]['id'];
+                    $createdReservationIds[] = $newId;
                     $result['created']++;
                     
-                    // Log successful creation
                     $this->logError('reservation_created_successfully', new Exception('Reservation created'), [
                         'operation_id' => $this->operationId,
                         'urano_reserva_id' => $uranoData['reserva_id'],
-                        'salas_reservation_id' => $reservation[0]['id'] ?? null,
+                        'salas_reservation_id' => $newId,
                         'titulo' => $uranoData['titulo'],
-                        'data' => $uranoData['data'],
-                        'sala_numero' => $uranoData['sala_numero']
                     ]);
                 } else {
-                    throw new Exception('API returned empty or invalid response');
+                    throw new Exception('API returned empty or invalid response (missing ID)');
                 }
-                
             } catch (Exception $e) {
-                $result['failed']++;
-                
-                // Check if this is a rate limiting error
-                if (str_contains($e->getMessage(), 'Too Many Attempts') || 
-                    str_contains($e->getMessage(), '429') ||
-                    str_contains($e->getMessage(), 'Rate limit')) {
-                    $result['rate_limited']++;
-                    
-                    // Wait longer on rate limit
-                    $this->warn('⏳ Rate limit hit, waiting 60 seconds...');
-                    sleep(60);
-                }
-                
                 $this->logError('reservation_creation_failed', $e, [
                     'operation_id' => $this->operationId,
-                    'urano_reserva_id' => $verifiedReservation['urano_data']['reserva_id'] ?? 'unknown',
-                    'urano_requisicao_id' => $verifiedReservation['urano_data']['requisicao_id'] ?? 'unknown',
-                    'titulo' => $verifiedReservation['urano_data']['titulo'] ?? 'unknown',
-                    'sala_numero' => $verifiedReservation['urano_data']['sala_numero'] ?? 'unknown',
+                    'urano_reserva_id' => $uranoData['reserva_id'] ?? 'unknown',
                     'error_message' => $e->getMessage()
                 ]);
+                // Re-throw to trigger rollback in the calling method
+                throw $e;
             }
         }
 
         return $result;
+    }
+
+    /**
+     * Rolls back created reservations.
+     *
+     * @param array $reservationIds
+     */
+    private function performRollback(array $reservationIds): void
+    {
+        if (empty($reservationIds)) {
+            $this->info('No reservations to roll back.');
+            return;
+        }
+
+        $this->warn('🔥 An error occurred. Starting automatic rollback of ' . count($reservationIds) . ' created reservations...');
+
+        $progressBar = $this->output->createProgressBar(count($reservationIds));
+        $progressBar->setFormat('debug');
+
+        $successCount = 0;
+        $failCount = 0;
+
+        foreach ($reservationIds as $id) {
+            try {
+                // Using purge=true to delete the whole series if it's a recurrent reservation
+                $this->apiClient->delete("/api/v1/reservas/{$id}?purge=true");
+                $this->logError('rollback_success', new Exception("Reservation {$id} deleted"), [
+                    'operation_id' => $this->operationId,
+                    'reservation_id' => $id,
+                ]);
+                $successCount++;
+            } catch (Exception $e) {
+                $this->logError('rollback_failed', $e, [
+                    'operation_id' => $this->operationId,
+                    'reservation_id' => $id,
+                ]);
+                $failCount++;
+            }
+            $progressBar->advance();
+        }
+
+        $progressBar->finish();
+        $this->newLine(2);
+
+        $this->info("✅ Rollback completed.");
+        $this->info("  • Successfully deleted: {$successCount}");
+        if ($failCount > 0) {
+            $this->error("  • Failed to delete: {$failCount}. Please check logs for details.");
+        }
     }
 
     /**
