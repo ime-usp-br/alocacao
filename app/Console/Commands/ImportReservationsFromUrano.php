@@ -1060,7 +1060,7 @@ class ImportReservationsFromUrano extends Command
             $currentBatch = 1;
             
             foreach ($batches as $batch) {
-                $this->info("\n🔄 Processing creation batch $currentBatch/$totalBatches (" . count($batch) . " reservations)");
+                //$this->info("\n🔄 Processing creation batch $currentBatch/$totalBatches (" . count($batch) . " reservations)");
                 
                 $batchResult = $this->createReservationBatch($batch, $createdReservationIds);
                 
