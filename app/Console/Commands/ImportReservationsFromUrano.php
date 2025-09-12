@@ -681,18 +681,30 @@ class ImportReservationsFromUrano extends Command
         $progressBar = $this->output->createProgressBar(count($requestsToMake));
         $progressBar->setFormat('debug');
 
+        // Get rate limit configuration
+        $rateLimitPerMinute = config('salas.rate_limiting.requests_per_minute', 30);
+        $delayBetweenRequests = $this->calculateDelayBetweenRequests($rateLimitPerMinute);
+
         $cache = [];
+        $requestCount = 0;
         foreach ($requestsToMake as $key => $params) {
             try {
+                // Apply rate limiting delay before each request (except the first one)
+                if ($requestCount > 0) {
+                    usleep($delayBetweenRequests * 1000); // Convert milliseconds to microseconds
+                }
+                
                 // Use the new protected API endpoint for better performance and higher rate limits
                 $response = $this->apiClient->getReservationsByRoomAndDate(
                     $params['sala'], 
                     $params['data']
                 );
                 $cache[$key] = $response['data'] ?? [];
+                $requestCount++;
             } catch (Exception $e) {
                 $this->logError('prefetch_conflict_error', $e, $params);
                 $cache[$key] = []; // Assume no reservations on error
+                $requestCount++;
             }
             $progressBar->advance();
         }
@@ -1073,9 +1085,7 @@ class ImportReservationsFromUrano extends Command
                 
                 $currentBatch++;
                 
-                if ($currentBatch <= $totalBatches) {
-                    sleep(2);
-                }
+                // No need for additional sleep here since rate limiting is now handled within createReservationBatch
             }
             
             $progressBar->finish();
@@ -1121,7 +1131,12 @@ class ImportReservationsFromUrano extends Command
     private function createReservationBatch(array $batch, array &$createdReservationIds): array
     {
         $result = ['created' => 0];
+        
+        // Get rate limit configuration
+        $rateLimitPerMinute = config('salas.rate_limiting.requests_per_minute', 30);
+        $delayBetweenRequests = $this->calculateDelayBetweenRequests($rateLimitPerMinute);
 
+        $requestCount = 0;
         foreach ($batch as $verifiedReservation) {
             if ($this->isDryRun) {
                 $result['created']++;
@@ -1132,6 +1147,11 @@ class ImportReservationsFromUrano extends Command
             $uranoData = $verifiedReservation['urano_data'];
             
             try {
+                // Apply rate limiting delay before each request (except the first one)
+                if ($requestCount > 0) {
+                    usleep($delayBetweenRequests * 1000); // Convert milliseconds to microseconds
+                }
+                
                 $reservation = $this->reservationService->createReservationsFromUranoData($uranoData);
                 
                 if ($reservation && !empty($reservation[0]['id'])) {
@@ -1148,6 +1168,8 @@ class ImportReservationsFromUrano extends Command
                 } else {
                     throw new Exception('API returned empty or invalid response (missing ID)');
                 }
+                
+                $requestCount++;
             } catch (Exception $e) {
                 $this->logError('reservation_creation_failed', $e, [
                     'operation_id' => $this->operationId,
@@ -1514,6 +1536,25 @@ class ImportReservationsFromUrano extends Command
         } catch (Exception $e) {
             return false;
         }
+    }
+
+    /**
+     * Calculate delay between requests to respect rate limit
+     *
+     * @param int $rateLimitPerMinute Maximum requests per minute
+     * @return int Delay in milliseconds
+     */
+    private function calculateDelayBetweenRequests(int $rateLimitPerMinute): int
+    {
+        if ($rateLimitPerMinute <= 0) {
+            return 0; // No rate limiting
+        }
+        
+        // Convert to milliseconds and add 10% buffer for safety
+        $delayMs = (60 * 1000) / $rateLimitPerMinute;
+        $bufferMs = $delayMs * 0.1;
+        
+        return (int) ceil($delayMs + $bufferMs);
     }
 
     /**
