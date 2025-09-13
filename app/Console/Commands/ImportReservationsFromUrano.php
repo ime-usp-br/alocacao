@@ -595,6 +595,7 @@ class ImportReservationsFromUrano extends Command
                 'unmappable_rooms' => 0,
                 'time_conflicts' => 0,
                 'data_validation_errors' => 0,
+                'api_validation_errors' => 0,
             ]
         ];
 
@@ -1395,7 +1396,7 @@ class ImportReservationsFromUrano extends Command
             if ($verificationStats['data_validation_errors'] > 0) {
                 $verificationTable[] = ['Data Validation Errors', $verificationStats['data_validation_errors']];
             }
-            if ($verificationStats['api_validation_errors'] > 0) {
+            if (isset($verificationStats['api_validation_errors']) && $verificationStats['api_validation_errors'] > 0) {
                 $verificationTable[] = ['API Validation Errors', $verificationStats['api_validation_errors']];
             }
             
