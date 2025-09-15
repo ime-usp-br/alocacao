@@ -43,11 +43,9 @@ class ReservationApiService
             // Validar que a turma tem sala alocada
             $this->validateSchoolClass($schoolclass);
 
-            // Extract current schedule for multi-schedule context (from temp clone)
-            $currentSchedule = $schoolclass->classschedules->first();
-
             // Mapear SchoolClass para payload da API Salas
-            $payload = $this->reservationMapper->mapSchoolClassToReservationPayload($schoolclass, $currentSchedule);
+            // Let ReservationMapper see all schedules to properly generate day_times if needed
+            $payload = $this->reservationMapper->mapSchoolClassToReservationPayload($schoolclass);
 
             $debugContext = array_merge($context, [
                 'payload' => $payload,

@@ -559,27 +559,27 @@ class MigrateReservationsToSalas extends Command
 
         $allSchedulesSucceeded = true;
 
-        foreach ($schedules as $schedule) {
-            try {
-                // Create a temporary clone to isolate the current schedule
-                $tempSchoolClass = clone $schoolClass;
-                // CRITICAL FIX: Set the relation to a collection with only the current schedule
-                $tempSchoolClass->setRelation('classschedules', collect([$schedule]));
+        try {
+            // Process ALL schedules together for proper day_times generation
+            // This allows ReservationMapper to see all schedules and create a single reservation with day_times
+            $reservations = $this->reservationService->createReservationsFromSchoolClass($schoolClass);
+            $this->statistics['created_reservations'] += count($reservations);
 
-                $reservations = $this->reservationService->createReservationsFromSchoolClass($tempSchoolClass);
-                $this->statistics['created_reservations'] += count($reservations);
-
-            } catch (Exception $e) {
-                $allSchedulesSucceeded = false;
-                $this->logError('school_class_schedule_migration_error', $e, [
-                    'school_class_id' => $schoolClass->id,
-                    'disciplina' => $schoolClass->coddis,
-                    'sala' => $schoolClass->room->nome ?? 'N/A',
-                    'schedule_details' => $schedule->toArray(),
-                ]);
-                // Break the loop for this class on the first error to avoid partial migrations
-                break; 
-            }
+        } catch (Exception $e) {
+            $allSchedulesSucceeded = false;
+            $this->logError('school_class_migration_error', $e, [
+                'school_class_id' => $schoolClass->id,
+                'disciplina' => $schoolClass->coddis,
+                'sala' => $schoolClass->room->nome ?? 'N/A',
+                'total_schedules' => count($schedules),
+                'schedule_details' => $schedules->map(function($s) {
+                    return [
+                        'day' => $s->diasmnocp,
+                        'start' => $s->horent,
+                        'end' => $s->horsai
+                    ];
+                })->toArray(),
+            ]);
         }
 
         $this->statistics['processed_classes']++;
