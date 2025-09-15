@@ -81,6 +81,12 @@ class ReservationApiService
     /**
      * Check availability for a SchoolClass
      *
+     * For SchoolClasses with multiple distinct schedules, this method will perform
+     * multiple API calls (one per schedule) which may impact rate limiting.
+     *
+     * PERFORMANCE NOTE: Classes with many schedules may trigger rate limits.
+     * Consider using a batch availability endpoint if available in the Salas API.
+     *
      * @param SchoolClass $schoolclass
      * @return bool True if available, false if conflicts exist
      * @throws Exception When availability check fails
@@ -257,23 +263,51 @@ class ReservationApiService
      */
     private function performAvailabilityCheck(SchoolClass $schoolclass, int $salaId): bool
     {
-        // Verificar disponibilidade para cada dia da semana da turma
+        $hasConflicts = false;
+        $totalConflicts = [];
+
+        // Check availability for each schedule in the class
         foreach ($schoolclass->classschedules as $schedule) {
             $conflicts = $this->checkTimeConflicts($salaId, $schedule, $schoolclass);
-            
+
             if (!empty($conflicts)) {
-                $this->log('debug', 'Conflitos encontrados na verificação de disponibilidade', [
+                $hasConflicts = true;
+                $totalConflicts = array_merge($totalConflicts, $conflicts);
+
+                $this->log('warning', 'Conflito encontrado em horário específico', [
                     'operation' => 'check_availability',
                     'schoolclass_id' => $schoolclass->id,
                     'sala_id' => $salaId,
                     'dia_semana' => $schedule->diasmnocp,
                     'horario_inicio' => $schedule->horent,
                     'horario_fim' => $schedule->horsai,
+                    'conflitos_encontrados' => count($conflicts),
                     'conflitos' => $conflicts
                 ]);
-                return false;
             }
         }
+
+        if ($hasConflicts) {
+            $this->log('warning', 'Verificação de disponibilidade: conflitos encontrados', [
+                'operation' => 'check_availability',
+                'schoolclass_id' => $schoolclass->id,
+                'sala_id' => $salaId,
+                'total_schedules_checked' => $schoolclass->classschedules->count(),
+                'total_conflicts_found' => count($totalConflicts),
+                'has_multiple_schedules' => $schoolclass->classschedules->count() > 1,
+                'availability_result' => false
+            ]);
+            return false;
+        }
+
+        $this->log('info', 'Verificação de disponibilidade: sem conflitos', [
+            'operation' => 'check_availability',
+            'schoolclass_id' => $schoolclass->id,
+            'sala_id' => $salaId,
+            'total_schedules_checked' => $schoolclass->classschedules->count(),
+            'has_multiple_schedules' => $schoolclass->classschedules->count() > 1,
+            'availability_result' => true
+        ]);
 
         return true;
     }
