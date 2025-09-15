@@ -77,6 +77,11 @@ class ReservationMapperTest extends TestCase
             ->with('fusion')
             ->andReturn(null);
 
+        // Mock offsetExists for tiptur field
+        $this->mockSchoolClass->shouldReceive('offsetExists')
+            ->with('tiptur')
+            ->andReturn(true);
+
         // Set up cache mock
         Cache::shouldReceive('remember')
             ->andReturn(123); // Mock sala ID
@@ -108,6 +113,7 @@ class ReservationMapperTest extends TestCase
         $this->assertEquals('9:59', $payload['horario_fim']); // 10:00 - 1 minute
         $this->assertEquals('Aula - MAC0110 T.01', $payload['nome']);
         $this->assertEquals(123, $payload['sala_id']);
+        $this->assertEquals(1, $payload['finalidade_id']); // Graduação
     }
 
     /** @test */
@@ -274,6 +280,95 @@ class ReservationMapperTest extends TestCase
 
         $this->assertEquals('9:59', $dayTimes['1']['end']); // 10:00 - 1 minute
         $this->assertEquals('16:30', $dayTimes['2']['end']); // unchanged
+    }
+
+    /** @test */
+    public function it_maps_schoolclass_tiptur_to_correct_finalidade()
+    {
+        $schedule = $this->createMockSchedule('seg', '08:00:00', '10:00:00');
+        $schedules = collect([$schedule]);
+
+        // Test Graduação
+        $this->mockSchoolClass->shouldReceive('getAttribute')
+            ->with('tiptur')
+            ->andReturn('Graduação');
+        $this->mockSchoolClass->shouldReceive('getAttribute')
+            ->with('classschedules')
+            ->andReturn($schedules);
+
+        $payload = $this->mapper->mapSchoolClassToReservationPayload($this->mockSchoolClass);
+        $this->assertEquals(1, $payload['finalidade_id']); // Graduação
+
+        // Test Pós Graduação
+        $mockPosGrad = clone $this->mockSchoolClass;
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('tiptur')
+            ->andReturn('Pós Graduação');
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('classschedules')
+            ->andReturn($schedules);
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('room')
+            ->andReturn($this->mockRoom);
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('schoolterm')
+            ->andReturn($this->mockSchoolTerm);
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('id')
+            ->andReturn(2);
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('coddis')
+            ->andReturn('MAC0110');
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('codtur')
+            ->andReturn('01');
+        $mockPosGrad->shouldReceive('getAttribute')
+            ->with('fusion')
+            ->andReturn(null);
+
+        $payload = $this->mapper->mapSchoolClassToReservationPayload($mockPosGrad);
+        $this->assertEquals(2, $payload['finalidade_id']); // Pós-Graduação
+    }
+
+    /** @test */
+    public function it_maps_urano_data_to_correct_finalidade()
+    {
+        $uranoData = [
+            'titulo' => 'Defesa de Mestrado',
+            'data' => '2024-01-15',
+            'hora_inicio' => '14:00',
+            'hora_fim' => '16:00',
+            'sala_nome' => 'B01',
+            'solicitante' => 'João Silva'
+        ];
+
+        $payload = $this->mapper->mapUranoDataToReservationPayload($uranoData);
+        $this->assertEquals(5, $payload['finalidade_id']); // Defesa
+
+        // Test with tipo_atividade (should override title keywords)
+        $uranoDataWithTipo = [
+            'titulo' => 'Aula de Pós-Graduação',
+            'tipo_atividade' => 'Pós-Graduação',
+            'data' => '2024-01-15',
+            'hora_inicio' => '14:00',
+            'hora_fim' => '16:00',
+            'sala_nome' => 'B01',
+            'solicitante' => 'João Silva'
+        ];
+        $payload = $this->mapper->mapUranoDataToReservationPayload($uranoDataWithTipo);
+        $this->assertEquals(2, $payload['finalidade_id']); // Pós-Graduação
+
+        // Test fallback to Graduação
+        $uranoData = [
+            'titulo' => 'Aula Regular',
+            'data' => '2024-01-15',
+            'hora_inicio' => '14:00',
+            'hora_fim' => '16:00',
+            'sala_nome' => 'B01',
+            'solicitante' => 'João Silva'
+        ];
+        $payload = $this->mapper->mapUranoDataToReservationPayload($uranoData);
+        $this->assertEquals(1, $payload['finalidade_id']); // Graduação (fallback)
     }
 
     /**

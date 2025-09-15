@@ -41,7 +41,7 @@ class ReservationMapper
             'nome' => $this->generateReservationName($schoolClass, $currentSchedule),
             'data' => $this->getStartDate($schoolClass),
             'sala_id' => $this->getSalaIdFromNome($schoolClass->room->nome),
-            'finalidade_id' => 1, // Graduação (padrão conforme AC2)
+            'finalidade_id' => $this->mapSchoolClassToFinalidade($schoolClass),
             'tipo_responsaveis' => 'eu', // Padrão conforme AC2
         ];
 
@@ -486,7 +486,7 @@ class ReservationMapper
             'horario_inicio' => $this->formatUranoTime($uranoData['hora_inicio']),
             'horario_fim' => $this->formatUranoTime($uranoData['hora_fim']),
             'sala_id' => $this->getSalaIdFromNome($uranoData['sala_nome']),
-            'finalidade_id' => 1, // Graduação (padrão conforme AC2)
+            'finalidade_id' => $this->mapUranoDataToFinalidade($uranoData),
             'tipo_responsaveis' => 'eu', // Padrão conforme AC2
             'observacoes' => $this->generateUranoObservations($uranoData),
         ];
@@ -650,5 +650,125 @@ class ReservationMapper
         } else {
             return (new DateTime($horsai))->format("G:i");
         }
+    }
+
+    /**
+     * Map SchoolClass type to appropriate finalidade ID
+     *
+     * Available finalidades from Salas API:
+     * 1 = Graduação, 2 = Pós-Graduação, 3 = Especialização, 4 = Extensão,
+     * 5 = Defesa, 6 = Qualificação, 7 = Reunião, 8 = Evento
+     *
+     * @param SchoolClass $schoolClass
+     * @return int
+     */
+    private function mapSchoolClassToFinalidade(SchoolClass $schoolClass): int
+    {
+        // Default fallback to Graduação
+        $finalidadeId = 1;
+
+        if (isset($schoolClass->tiptur) && !empty($schoolClass->tiptur)) {
+            switch ($schoolClass->tiptur) {
+                case 'Graduação':
+                    $finalidadeId = 1; // Graduação
+                    break;
+                case 'Pós Graduação':
+                    $finalidadeId = 2; // Pós-Graduação
+                    break;
+                case 'Especialização':
+                    $finalidadeId = 3; // Especialização
+                    break;
+                case 'Extensão':
+                    $finalidadeId = 4; // Extensão
+                    break;
+                default:
+                    // Unknown type, fallback to Graduação
+                    $finalidadeId = 1;
+                    $this->log('warning', 'Tipo de turma desconhecido, usando Graduação como fallback', [
+                        'schoolclass_id' => $schoolClass->id,
+                        'tiptur' => $schoolClass->tiptur,
+                        'finalidade_mapped' => $finalidadeId
+                    ]);
+                    break;
+            }
+        }
+
+        $this->log('debug', 'Finalidade mapeada para SchoolClass', [
+            'schoolclass_id' => $schoolClass->id,
+            'tiptur' => $schoolClass->tiptur,
+            'finalidade_id' => $finalidadeId
+        ]);
+
+        return $finalidadeId;
+    }
+
+    /**
+     * Map Urano data to appropriate finalidade ID
+     *
+     * Available finalidades from Salas API:
+     * 1 = Graduação, 2 = Pós-Graduação, 3 = Especialização, 4 = Extensão,
+     * 5 = Defesa, 6 = Qualificação, 7 = Reunião, 8 = Evento
+     *
+     * @param array $uranoData
+     * @return int
+     */
+    private function mapUranoDataToFinalidade(array $uranoData): int
+    {
+        // Default fallback to Graduação
+        $finalidadeId = 1;
+
+        // Check if we have activity type information from Urano
+        if (isset($uranoData['tipo_atividade']) && !empty($uranoData['tipo_atividade'])) {
+            $tipoAtividade = strtolower(trim($uranoData['tipo_atividade']));
+
+            // Map common Urano activity types to finalidades
+            if (str_contains($tipoAtividade, 'graduação') || str_contains($tipoAtividade, 'graduacao')) {
+                $finalidadeId = 1; // Graduação
+            } elseif (str_contains($tipoAtividade, 'pós') || str_contains($tipoAtividade, 'pos') ||
+                      str_contains($tipoAtividade, 'mestrado') || str_contains($tipoAtividade, 'doutorado')) {
+                $finalidadeId = 2; // Pós-Graduação
+            } elseif (str_contains($tipoAtividade, 'especialização') || str_contains($tipoAtividade, 'especializacao')) {
+                $finalidadeId = 3; // Especialização
+            } elseif (str_contains($tipoAtividade, 'extensão') || str_contains($tipoAtividade, 'extensao')) {
+                $finalidadeId = 4; // Extensão
+            } elseif (str_contains($tipoAtividade, 'defesa')) {
+                $finalidadeId = 5; // Defesa
+            } elseif (str_contains($tipoAtividade, 'qualificação') || str_contains($tipoAtividade, 'qualificacao')) {
+                $finalidadeId = 6; // Qualificação
+            } elseif (str_contains($tipoAtividade, 'reunião') || str_contains($tipoAtividade, 'reuniao')) {
+                $finalidadeId = 7; // Reunião
+            } elseif (str_contains($tipoAtividade, 'evento')) {
+                $finalidadeId = 8; // Evento
+            }
+        }
+
+        // Check title for keywords if activity type is not available or didn't match
+        if ($finalidadeId === 1 && isset($uranoData['titulo']) && !empty($uranoData['titulo'])) {
+            $titulo = strtolower(trim($uranoData['titulo']));
+
+            if (str_contains($titulo, 'defesa')) {
+                $finalidadeId = 5; // Defesa
+            } elseif (str_contains($titulo, 'qualificação') || str_contains($titulo, 'qualificacao')) {
+                $finalidadeId = 6; // Qualificação
+            } elseif (str_contains($titulo, 'reunião') || str_contains($titulo, 'reuniao')) {
+                $finalidadeId = 7; // Reunião
+            } elseif (str_contains($titulo, 'evento') || str_contains($titulo, 'seminário') ||
+                      str_contains($titulo, 'seminario') || str_contains($titulo, 'workshop')) {
+                $finalidadeId = 8; // Evento
+            } elseif (str_contains($titulo, 'pós') || str_contains($titulo, 'pos') ||
+                      str_contains($titulo, 'mestrado') || str_contains($titulo, 'doutorado')) {
+                $finalidadeId = 2; // Pós-Graduação
+            } elseif (str_contains($titulo, 'extensão') || str_contains($titulo, 'extensao')) {
+                $finalidadeId = 4; // Extensão
+            }
+        }
+
+        $this->log('debug', 'Finalidade mapeada para dados do Urano', [
+            'urano_titulo' => $uranoData['titulo'] ?? null,
+            'urano_tipo_atividade' => $uranoData['tipo_atividade'] ?? null,
+            'finalidade_id' => $finalidadeId
+        ]);
+
+        return $finalidadeId;
     }
 }

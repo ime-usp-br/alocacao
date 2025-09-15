@@ -528,16 +528,16 @@ class ImportReservationsFromUrano extends Command
                 'sala_nome' => $uranoRecord->sala_nome,
                 'atividade_regular' => (bool) $uranoRecord->atividadeRegular,
                 'requisicao_id' => $uranoRecord->requisicao_id,
+                'tipo_atividade' => $uranoRecord->atividade ?? null,
                 // Status mapping from REQUISICAO.status
                 'urano_status' => $uranoRecord->status
             ];
 
             // Use existing ReservationMapper to create API payload
             $apiPayload = $this->mapper->mapUranoDataToReservationPayload($transformedData);
-            
-            // Apply status mapping and ensure finalidade_id = 1
+
+            // Apply status mapping
             $apiPayload['status'] = $this->mapUranoStatusToSalasStatus($uranoRecord->status);
-            $apiPayload['finalidade_id'] = 1; // Default finalidade_id requirement
             
             $result['mapped_data'] = array_merge($transformedData, [
                 'api_payload' => $apiPayload,
@@ -1351,7 +1351,8 @@ class ImportReservationsFromUrano extends Command
             'sala_numero' => $uranoReservation->sala_numero,
             'sala_nome' => $uranoReservation->sala_nome,
             'atividade_regular' => (bool) $uranoReservation->atividadeRegular,
-            'requisicao_id' => $uranoReservation->requisicao_id
+            'requisicao_id' => $uranoReservation->requisicao_id,
+            'tipo_atividade' => $uranoReservation->atividade ?? null
         ];
     }
 
