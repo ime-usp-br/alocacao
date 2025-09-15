@@ -40,20 +40,42 @@ class ReservationMapper
         $payload = [
             'nome' => $this->generateReservationName($schoolClass, $currentSchedule),
             'data' => $this->getStartDate($schoolClass),
-            'horario_inicio' => $this->mapStartTime($schoolClass),
-            'horario_fim' => $this->mapEndTime($schoolClass),
             'sala_id' => $this->getSalaIdFromNome($schoolClass->room->nome),
             'finalidade_id' => 1, // Graduação (padrão conforme AC2)
             'tipo_responsaveis' => 'eu', // Padrão conforme AC2
         ];
 
-        // Adicionar recorrência se a turma tem horários
+        // Handle time fields based on schedule complexity
         if ($schoolClass->classschedules->isNotEmpty()) {
             $repeatDays = $this->mapDaysToRepeatDays($schoolClass->classschedules);
             if (!empty($repeatDays)) {
                 $payload['repeat_days'] = $repeatDays;
                 $payload['repeat_until'] = $this->getEndDate($schoolClass);
+
+                // API Salas requires day_times for ALL recurring reservations
+                // Use day_times structure for all recurring schedules (API requirement)
+                $payload['day_times'] = $this->buildDayTimesArray($schoolClass->classschedules);
+
+                if ($this->hasDistinctTimes($schoolClass->classschedules)) {
+                    $this->log('info', 'Using day_times structure for distinct schedules', [
+                        'schoolclass_id' => $schoolClass->id,
+                        'distinct_schedules' => count($schoolClass->classschedules),
+                        'day_times' => $payload['day_times']
+                    ]);
+                } else {
+                    $this->log('info', 'Using day_times structure for uniform schedules (API requirement)', [
+                        'schoolclass_id' => $schoolClass->id,
+                        'uniform_schedules' => count($schoolClass->classschedules),
+                        'day_times' => $payload['day_times']
+                    ]);
+                }
+            } else {
+                // Single schedule or no valid schedules
+                $payload['horario_inicio'] = $this->mapStartTime($schoolClass);
+                $payload['horario_fim'] = $this->mapEndTime($schoolClass);
             }
+        } else {
+            throw new Exception('SchoolClass deve ter pelo menos um horário de aula definido');
         }
 
         $this->logMapping($schoolClass, $payload);
@@ -347,19 +369,31 @@ class ReservationMapper
             ];
         })->toArray();
 
-        $this->log('info', 'SchoolClass mapeada para payload da API Salas', [
+        $logData = [
             'schoolclass_id' => $schoolClass->id,
             'disciplina' => $schoolClass->coddis,
             'turma' => $schoolClass->codtur,
             'sala_nome' => $schoolClass->room->nome,
             'payload_nome' => $payload['nome'],
-            'payload_horario_inicio' => $payload['horario_inicio'],
-            'payload_horario_fim' => $payload['horario_fim'],
             'sala_id' => $payload['sala_id'],
             'repeat_days' => $payload['repeat_days'] ?? null,
             'schedules_count' => count($scheduleDetails),
             'schedule_details' => $scheduleDetails,
-        ]);
+        ];
+
+        // Add time field information based on payload structure
+        if (isset($payload['day_times'])) {
+            $logData['time_structure'] = 'day_times';
+            $logData['day_times'] = $payload['day_times'];
+            $logData['distinct_times'] = true;
+        } else {
+            $logData['time_structure'] = 'traditional';
+            $logData['payload_horario_inicio'] = $payload['horario_inicio'] ?? null;
+            $logData['payload_horario_fim'] = $payload['horario_fim'] ?? null;
+            $logData['distinct_times'] = false;
+        }
+
+        $this->log('info', 'SchoolClass mapeada para payload da API Salas', $logData);
     }
 
     /**
@@ -548,5 +582,73 @@ class ReservationMapper
         }
 
         return implode("\n", $observations);
+    }
+
+    /**
+     * Check if SchoolClass has distinct times for different days
+     *
+     * @param Collection $classSchedules
+     * @return bool
+     */
+    private function hasDistinctTimes(Collection $classSchedules): bool
+    {
+        if ($classSchedules->count() <= 1) {
+            return false;
+        }
+
+        $uniqueTimes = $classSchedules->map(function ($schedule) {
+            return $schedule->horent . '-' . $schedule->horsai;
+        })->unique();
+
+        // If we have more than one unique time combination, we have distinct times
+        return $uniqueTimes->count() > 1;
+    }
+
+    /**
+     * Build day_times array for API payload
+     *
+     * @param Collection $classSchedules
+     * @return array
+     */
+    private function buildDayTimesArray(Collection $classSchedules): array
+    {
+        $dayMapping = [
+            'dom' => 0, 'seg' => 1, 'ter' => 2, 'qua' => 3,
+            'qui' => 4, 'sex' => 5, 'sab' => 6
+        ];
+
+        $dayTimes = [];
+
+        foreach ($classSchedules as $schedule) {
+            $dayNumber = $dayMapping[$schedule->diasmnocp] ?? null;
+
+            if ($dayNumber !== null) {
+                $startTime = (new DateTime($schedule->horent))->format("G:i");
+                $endTime = $this->formatEndTime($schedule->horsai);
+
+                $dayTimes[(string)$dayNumber] = [
+                    'start' => $startTime,
+                    'end' => $endTime
+                ];
+            }
+        }
+
+        return $dayTimes;
+    }
+
+    /**
+     * Format end time with the same logic as mapEndTime
+     *
+     * @param string $horsai
+     * @return string
+     */
+    private function formatEndTime(string $horsai): string
+    {
+        // Replicar lógica do Requisition.php para horário de fim
+        if (explode(":", $horsai)[1] == "00") {
+            return (new DateTime($horsai))->sub(new DateInterval("PT1M"))->format("G:i");
+        } else {
+            return (new DateTime($horsai))->format("G:i");
+        }
     }
 }

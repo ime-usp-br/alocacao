@@ -708,4 +708,180 @@ class ReservationApiServiceTest extends TestCase
 
         $this->reservationApiService->createReservationsFromSchoolClass($this->schoolClass);
     }
+
+    /** @test */
+    public function test_check_availability_for_multiple_distinct_schedules()
+    {
+        // Arrange - Create school class with multiple distinct schedules
+        $schoolClass = Mockery::mock(SchoolClass::class);
+        $room = Mockery::mock(Room::class);
+        $room->shouldReceive('getAttribute')->with('nome')->andReturn('B01');
+
+        $schoolClass->shouldReceive('getAttribute')->with('id')->andReturn(1);
+        $schoolClass->shouldReceive('getAttribute')->with('room')->andReturn($room);
+
+        // Mock multiple schedules
+        $schedule1 = (object)['diasmnocp' => 'seg', 'horent' => '08:00:00', 'horsai' => '10:00:00'];
+        $schedule2 = (object)['diasmnocp' => 'qua', 'horent' => '14:00:00', 'horsai' => '16:00:00'];
+        $schedules = collect([$schedule1, $schedule2]);
+
+        $schoolClass->shouldReceive('getAttribute')->with('classschedules')->andReturn($schedules);
+
+        $this->reservationMapper
+            ->shouldReceive('getSalaIdFromNome')
+            ->with('B01')
+            ->once()
+            ->andReturn(1);
+
+        // Mock availability check that will be called for each schedule
+        Cache::shouldReceive('remember')
+            ->once()
+            ->andReturnUsing(function ($key, $ttl, $callback) use ($schoolClass) {
+                // Simulate checking each schedule individually
+                return $callback();
+            });
+
+        // Mock API calls for conflict checking (one per schedule)
+        $this->salasApiClient
+            ->shouldReceive('get')
+            ->with('/api/v1/reservas', Mockery::any())
+            ->andReturn(['data' => []]); // No conflicts
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('warning')->atLeast(0);
+
+        // Act
+        $result = $this->reservationApiService->checkAvailabilityForSchoolClass($schoolClass);
+
+        // Assert
+        $this->assertTrue($result);
+    }
+
+    /** @test */
+    public function test_check_availability_logs_multiple_schedule_information()
+    {
+        // Arrange - Create school class with multiple schedules
+        $schoolClass = Mockery::mock(SchoolClass::class);
+        $room = Mockery::mock(Room::class);
+        $room->shouldReceive('getAttribute')->with('nome')->andReturn('A132');
+
+        $schoolClass->shouldReceive('getAttribute')->with('id')->andReturn(2);
+        $schoolClass->shouldReceive('getAttribute')->with('room')->andReturn($room);
+
+        // Mock three different schedules
+        $schedule1 = (object)['diasmnocp' => 'seg', 'horent' => '08:00:00', 'horsai' => '10:00:00'];
+        $schedule2 = (object)['diasmnocp' => 'ter', 'horent' => '10:00:00', 'horsai' => '12:00:00'];
+        $schedule3 = (object)['diasmnocp' => 'qua', 'horent' => '14:00:00', 'horsai' => '16:00:00'];
+        $schedules = collect([$schedule1, $schedule2, $schedule3]);
+
+        $schoolClass->shouldReceive('getAttribute')->with('classschedules')->andReturn($schedules);
+
+        $this->reservationMapper
+            ->shouldReceive('getSalaIdFromNome')
+            ->with('A132')
+            ->once()
+            ->andReturn(132);
+
+        Cache::shouldReceive('remember')
+            ->once()
+            ->andReturnUsing(function ($key, $ttl, $callback) {
+                return $callback();
+            });
+
+        // Mock API calls for each schedule
+        $this->salasApiClient
+            ->shouldReceive('get')
+            ->times(3) // Should check each schedule
+            ->with('/api/v1/reservas', Mockery::any())
+            ->andReturn(['data' => []]);
+
+        // Expect detailed logging about multiple schedules
+        Log::shouldReceive('info')
+            ->with('Verificação de disponibilidade: sem conflitos', Mockery::on(function ($context) {
+                return isset($context['total_schedules_checked']) &&
+                       $context['total_schedules_checked'] === 3 &&
+                       isset($context['has_multiple_schedules']) &&
+                       $context['has_multiple_schedules'] === true;
+            }));
+
+        Log::shouldReceive('info')->atLeast(1);
+        Log::shouldReceive('warning')->atLeast(0);
+
+        // Act
+        $result = $this->reservationApiService->checkAvailabilityForSchoolClass($schoolClass);
+
+        // Assert
+        $this->assertTrue($result);
+    }
+
+    /** @test */
+    public function test_check_availability_handles_conflicts_in_multiple_schedules()
+    {
+        // Arrange - Create school class with conflicting schedules
+        $schoolClass = Mockery::mock(SchoolClass::class);
+        $room = Mockery::mock(Room::class);
+        $room->shouldReceive('getAttribute')->with('nome')->andReturn('B16');
+
+        $schoolClass->shouldReceive('getAttribute')->with('id')->andReturn(3);
+        $schoolClass->shouldReceive('getAttribute')->with('room')->andReturn($room);
+
+        $schedule1 = (object)['diasmnocp' => 'seg', 'horent' => '08:00:00', 'horsai' => '10:00:00'];
+        $schedule2 = (object)['diasmnocp' => 'qua', 'horent' => '14:00:00', 'horsai' => '16:00:00'];
+        $schedules = collect([$schedule1, $schedule2]);
+
+        $schoolClass->shouldReceive('getAttribute')->with('classschedules')->andReturn($schedules);
+
+        $this->reservationMapper
+            ->shouldReceive('getSalaIdFromNome')
+            ->with('B16')
+            ->once()
+            ->andReturn(16);
+
+        Cache::shouldReceive('remember')
+            ->once()
+            ->andReturnUsing(function ($key, $ttl, $callback) {
+                return $callback();
+            });
+
+        // Mock API response with conflict on second schedule
+        $this->salasApiClient
+            ->shouldReceive('get')
+            ->with('/api/v1/reservas', Mockery::any())
+            ->andReturn(['data' => []], // First schedule - no conflict
+                       ['data' => [     // Second schedule - has conflict
+                           [
+                               'id' => 999,
+                               'nome' => 'Existing Reservation',
+                               'data' => '2024-01-17',
+                               'horario_inicio' => '14:30',
+                               'horario_fim' => '15:30'
+                           ]
+                       ]]);
+
+        // Expect warning logs for conflicts
+        Log::shouldReceive('warning')
+            ->with('Conflito encontrado em horário específico', Mockery::on(function ($context) {
+                return isset($context['dia_semana']) &&
+                       $context['dia_semana'] === 'qua' &&
+                       isset($context['conflitos_encontrados']) &&
+                       $context['conflitos_encontrados'] > 0;
+            }));
+
+        Log::shouldReceive('warning')
+            ->with('Verificação de disponibilidade: conflitos encontrados', Mockery::on(function ($context) {
+                return isset($context['total_conflicts_found']) &&
+                       $context['total_conflicts_found'] > 0 &&
+                       isset($context['availability_result']) &&
+                       $context['availability_result'] === false;
+            }));
+
+        Log::shouldReceive('info')->atLeast(0);
+        Log::shouldReceive('warning')->atLeast(0);
+
+        // Act
+        $result = $this->reservationApiService->checkAvailabilityForSchoolClass($schoolClass);
+
+        // Assert
+        $this->assertFalse($result);
+    }
 }
