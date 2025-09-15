@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 use App\Services\ReservationMapper;
 use App\Services\SalasApiClient;
 use App\Models\SchoolClass;
@@ -27,7 +27,16 @@ class ReservationMapperTest extends TestCase
     {
         parent::setUp();
 
+        // Mock Cache facade
+        Cache::shouldReceive('has')->andReturn(false);
+        Cache::shouldReceive('get')->andReturn(collect());
+        Cache::shouldReceive('put')->andReturn(true);
+
         $this->mockApiClient = Mockery::mock(SalasApiClient::class);
+        $this->mockApiClient->shouldReceive('getAllSalas')->andReturn(collect([
+            ['id' => 123, 'nome' => 'B01'],
+            ['id' => 456, 'nome' => 'A101']
+        ]));
         $this->mapper = new ReservationMapper($this->mockApiClient);
 
         // Mock room
@@ -95,7 +104,7 @@ class ReservationMapperTest extends TestCase
         $this->assertArrayHasKey('horario_inicio', $payload);
         $this->assertArrayHasKey('horario_fim', $payload);
         $this->assertArrayNotHasKey('day_times', $payload);
-        $this->assertEquals('8:0', $payload['horario_inicio']);
+        $this->assertEquals('8:00', $payload['horario_inicio']);
         $this->assertEquals('9:59', $payload['horario_fim']); // 10:00 - 1 minute
         $this->assertEquals('Aula - MAC0110 T.01', $payload['nome']);
         $this->assertEquals(123, $payload['sala_id']);
@@ -243,8 +252,8 @@ class ReservationMapperTest extends TestCase
         $dayTimes = $this->invokePrivateMethod($mapper, 'buildDayTimesArray', [$schedules]);
 
         $expected = [
-            '1' => ['start' => '8:0', 'end' => '9:59'], // seg
-            '3' => ['start' => '14:0', 'end' => '16:30'] // qua
+            '1' => ['start' => '8:00', 'end' => '9:59'], // seg
+            '3' => ['start' => '14:00', 'end' => '16:30'] // qua
         ];
 
         $this->assertEquals($expected, $dayTimes);
