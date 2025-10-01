@@ -114,6 +114,20 @@ class SalasApiClient
     }
 
     /**
+     * Make a PUT request to the API
+     *
+     * @param string $endpoint
+     * @param array $data
+     * @return array
+     * @throws Exception
+     */
+    public function put(string $endpoint, array $data): array
+    {
+        $this->ensureAuthenticated();
+        return $this->makeRequest('PUT', $endpoint, $data);
+    }
+
+    /**
      * Make a DELETE request to the API
      *
      * @param string $endpoint
@@ -167,6 +181,9 @@ class SalasApiClient
                         break;
                     case 'POST':
                         $response = $request->post($url, $data);
+                        break;
+                    case 'PUT':
+                        $response = $request->put($url, $data);
                         break;
                     case 'PATCH':
                         $response = $request->patch($url, $data);
