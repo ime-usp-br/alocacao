@@ -94,6 +94,11 @@ class ImportReservationsFromUrano extends Command
 
             $this->info("📊 Found {$uranoReservations->count()} reservations to process");
 
+            // Step 2.5: Group reservations by requisicao_id (Issue #31)
+            $this->info('🔄 Step 2.5: Grouping reservations by requisition');
+            $groupedReservations = $this->groupReservationsByRequisicao($uranoReservations);
+            $this->displayGroupingStatistics($groupedReservations);
+
             // Step 3: Confirmation
             if (!$this->isDryRun && !$this->option('force')) {
                 if (!$this->confirm('Proceed with importing reservations to Salas API?')) {
@@ -105,7 +110,7 @@ class ImportReservationsFromUrano extends Command
             // Step 4: Two-Phase Processing (Verification → Creation)
             $this->info('🔄 Step 3: Two-Phase Processing (Verification → Creation)');
             $this->info('🛡️ All or Nothing Policy - Validation will halt immediately on first error');
-            if (!$this->processUranoReservations($uranoReservations)) {
+            if (!$this->processGroupedUranoReservations($groupedReservations)) {
                 return 1;
             }
 
@@ -319,6 +324,82 @@ class ImportReservationsFromUrano extends Command
         // Only approved reservations (assuming status 1 means approved)
         $query->where('req.status', 1);
         $this->info("  🔸 Including only approved reservations (status = 1)");
+    }
+
+    /**
+     * Group Urano reservations by requisicao_id
+     * Issue #31: Group multiple RESERVA records by REQUISICAO to create single Salas reservation
+     *
+     * @param \Illuminate\Support\Collection $uranoReservations
+     * @return \Illuminate\Support\Collection Collection of groups, each containing reservations with same requisicao_id
+     */
+    private function groupReservationsByRequisicao($uranoReservations)
+    {
+        $grouped = $uranoReservations->groupBy('requisicao_id');
+
+        Log::info('Urano Import - Reservations grouped by requisicao_id', [
+            'operation_id' => $this->operationId,
+            'total_reservations' => $uranoReservations->count(),
+            'total_groups' => $grouped->count(),
+            'avg_reservations_per_group' => round($uranoReservations->count() / $grouped->count(), 2)
+        ]);
+
+        return $grouped;
+    }
+
+    /**
+     * Display grouping statistics
+     *
+     * @param \Illuminate\Support\Collection $groupedReservations
+     */
+    private function displayGroupingStatistics($groupedReservations): void
+    {
+        $totalGroups = $groupedReservations->count();
+        $singleReservationGroups = $groupedReservations->filter(fn($group) => $group->count() === 1)->count();
+        $multiReservationGroups = $totalGroups - $singleReservationGroups;
+
+        $groupSizes = $groupedReservations->map(fn($group) => $group->count());
+        $maxGroupSize = $groupSizes->max();
+        $avgGroupSize = round($groupSizes->avg(), 2);
+
+        $this->info("  📊 Grouping Statistics:");
+        $this->line("    • Total requisitions: {$totalGroups}");
+        $this->line("    • Single-day requisitions: {$singleReservationGroups}");
+        $this->line("    • Multi-day requisitions: {$multiReservationGroups}");
+        $this->line("    • Average days per requisition: {$avgGroupSize}");
+        $this->line("    • Maximum days in a requisition: {$maxGroupSize}");
+        $this->newLine();
+    }
+
+    /**
+     * Process grouped Urano reservations using two-phase logic
+     * Issue #31: Process requisition groups instead of individual reservations
+     *
+     * @param \Illuminate\Support\Collection $groupedReservations
+     * @return bool
+     */
+    private function processGroupedUranoReservations($groupedReservations): bool
+    {
+        // Phase 1: Verification Phase
+        $this->info('🔍 Step 4A: Verification Phase (Grouped by Requisition)');
+        $verificationResult = $this->verifyGroupedUranoReservations($groupedReservations);
+
+        if (!$verificationResult['success']) {
+            $this->displayVerificationErrors($verificationResult);
+            return false;
+        }
+
+        $this->info("✅ Verification completed: {$verificationResult['statistics']['passed_validation']} requisition groups ready for creation");
+
+        // Phase 2: Creation Phase (only if verification succeeded)
+        $this->info('⚡ Step 4B: Creation Phase (Grouped Reservations)');
+        $creationResult = $this->createVerifiedRequisitionGroups($verificationResult['verified_groups'], $verificationResult['room_mappings']);
+
+        if (!$creationResult) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -983,6 +1064,389 @@ class ImportReservationsFromUrano extends Command
     }
 
     /**
+     * Verification phase for grouped reservations: validate all requisition groups before creation
+     * Issue #31: Validate groups instead of individual reservations
+     *
+     * @param \Illuminate\Support\Collection $groupedReservations
+     * @return array Verification result with validated groups and statistics
+     */
+    private function verifyGroupedUranoReservations($groupedReservations): array
+    {
+        $this->info('🔍 Executando fase de verificação para reservas agrupadas');
+
+        $result = [
+            'success' => false,
+            'verified_groups' => [],
+            'validation_errors' => [],
+            'room_mappings' => [],
+            'statistics' => [
+                'total_groups_processed' => $groupedReservations->count(),
+                'total_reservations' => $groupedReservations->flatten(1)->count(),
+                'passed_validation' => 0,
+                'failed_validation' => 0,
+                'unmappable_rooms' => 0,
+                'time_conflicts' => 0,
+                'data_validation_errors' => 0,
+                'internal_conflicts' => 0,
+            ]
+        ];
+
+        try {
+            // Step 1: Pre-load room mappings
+            $this->info('  🔸 Pre-loading room mappings...');
+            $allReservations = $groupedReservations->flatten(1);
+            $roomMappings = $this->preloadRoomMappings($allReservations);
+            $result['room_mappings'] = $roomMappings;
+
+            // Step 2: Pre-fetch existing reservations for conflict checking
+            $this->info('  🔸 Pre-fetching existing reservations for conflict checking...');
+            $existingReservationsCache = $this->prefetchExistingReservations($allReservations, $roomMappings);
+
+            // Step 3: Validate each requisition group
+            $this->info('  🔸 Validating requisition groups...');
+            $progressBar = $this->output->createProgressBar($groupedReservations->count());
+            $progressBar->setFormat('debug');
+
+            foreach ($groupedReservations as $requisicaoId => $reservationGroup) {
+                $validationResult = $this->validateUranoRequisitionGroup($reservationGroup, $roomMappings, $existingReservationsCache);
+
+                if ($validationResult['valid']) {
+                    $result['verified_groups'][] = $validationResult['group_data'];
+                    $result['statistics']['passed_validation']++;
+                } else {
+                    $result['validation_errors'] = array_merge($result['validation_errors'], $validationResult['errors']);
+                    $result['statistics']['failed_validation']++;
+
+                    foreach ($validationResult['errors'] as $error) {
+                        if (isset($result['statistics'][$error['type'] . 's'])) {
+                            $result['statistics'][$error['type'] . 's']++;
+                        }
+                    }
+
+                    $this->logError('group_validation_halt', new Exception('Group validation halted on first error'), ['policy_triggered' => true]);
+                    break; // Halt on first error
+                }
+                $progressBar->advance();
+            }
+
+            $progressBar->finish();
+            $this->newLine();
+
+            $result['success'] = $result['statistics']['failed_validation'] === 0;
+            $this->statistics['verification_phase'] = $result['statistics'];
+
+            return $result;
+
+        } catch (Exception $e) {
+            $result['validation_errors'][] = ['type' => 'system_error', 'message' => $e->getMessage()];
+            $this->logError('verification_phase_error', $e);
+            return $result;
+        }
+    }
+
+    /**
+     * Validate a single Urano requisition group (multiple reservations with same requisicao_id)
+     * Issue #31: Validate all reservations in group together
+     *
+     * @param \Illuminate\Support\Collection $reservationGroup
+     * @param array $roomMappings
+     * @param array $existingReservationsCache
+     * @return array Validation result
+     */
+    private function validateUranoRequisitionGroup($reservationGroup, array $roomMappings, array $existingReservationsCache): array
+    {
+        $result = [
+            'valid' => false,
+            'group_data' => null,
+            'errors' => []
+        ];
+
+        try {
+            $firstReservation = $reservationGroup->first();
+
+            // Data validation for all reservations in group
+            foreach ($reservationGroup as $reservation) {
+                $dataValidation = $this->validateUranoReservationData($reservation);
+                if (!$dataValidation['valid']) {
+                    $result['errors'] = array_merge($result['errors'], $dataValidation['errors']);
+                    return $result;
+                }
+            }
+
+            // Room validation - all must have same room
+            $uniqueRooms = $reservationGroup->pluck('sala_nome')->unique();
+            if ($uniqueRooms->count() > 1) {
+                $result['errors'][] = [
+                    'type' => 'data_validation',
+                    'message' => 'All reservations in same requisition must have same room',
+                    'context' => [
+                        'requisicao_id' => $firstReservation->requisicao_id,
+                        'rooms_found' => $uniqueRooms->toArray()
+                    ]
+                ];
+                return $result;
+            }
+
+            // Room mapping validation
+            $roomName = $firstReservation->sala_nome;
+            if (!isset($roomMappings[$roomName]) || !$roomMappings[$roomName]['mappable']) {
+                $result['errors'][] = [
+                    'type' => 'unmappable_room',
+                    'message' => "Room '{$roomName}' cannot be mapped to Salas system",
+                    'context' => [
+                        'requisicao_id' => $firstReservation->requisicao_id,
+                        'urano_room_name' => $roomName
+                    ]
+                ];
+                return $result;
+            }
+
+            $salaId = $roomMappings[$roomName]['sala_id'];
+
+            // Check for internal conflicts (same day, overlapping times within group)
+            $internalConflicts = $this->checkInternalConflictsInGroup($reservationGroup);
+            if (!empty($internalConflicts)) {
+                $result['errors'][] = [
+                    'type' => 'internal_conflict',
+                    'message' => 'Multiple reservations on same day with overlapping times within requisition',
+                    'context' => [
+                        'requisicao_id' => $firstReservation->requisicao_id,
+                        'conflicts' => $internalConflicts
+                    ]
+                ];
+                return $result;
+            }
+
+            // Check for external conflicts with existing Salas reservations
+            foreach ($reservationGroup as $reservation) {
+                $transformedData = $this->transformUranoReservation($reservation);
+                $data = $reservation->data;
+                $cacheKey = "{$salaId}_{$data}";
+                $existingReservationsForDay = $existingReservationsCache[$cacheKey] ?? [];
+
+                $businessValidation = $this->validateBusinessRules($transformedData, $salaId, $existingReservationsForDay);
+                if (!$businessValidation['valid']) {
+                    $result['errors'] = array_merge($result['errors'], $businessValidation['errors']);
+                    return $result;
+                }
+            }
+
+            // All validations passed - prepare group data
+            $result['group_data'] = [
+                'requisicao_id' => $firstReservation->requisicao_id,
+                'reservation_group' => $reservationGroup,
+                'sala_id' => $salaId,
+                'room_name' => $roomName
+            ];
+            $result['valid'] = true;
+
+        } catch (Exception $e) {
+            $result['errors'][] = [
+                'type' => 'system_error',
+                'message' => 'Unexpected error during group validation: ' . $e->getMessage(),
+                'context' => [
+                    'requisicao_id' => $firstReservation->requisicao_id ?? 'unknown'
+                ]
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check for internal conflicts within a requisition group
+     * (multiple reservations on same day with overlapping times)
+     *
+     * @param \Illuminate\Support\Collection $reservationGroup
+     * @return array Array of conflicts found
+     */
+    private function checkInternalConflictsInGroup($reservationGroup): array
+    {
+        $conflicts = [];
+        $reservationsByDate = $reservationGroup->groupBy('data');
+
+        foreach ($reservationsByDate as $date => $reservationsOnSameDay) {
+            if ($reservationsOnSameDay->count() > 1) {
+                // Check for time overlaps between reservations on same day
+                $reservationsArray = $reservationsOnSameDay->values()->all();
+                for ($i = 0; $i < count($reservationsArray); $i++) {
+                    for ($j = $i + 1; $j < count($reservationsArray); $j++) {
+                        $res1 = $reservationsArray[$i];
+                        $res2 = $reservationsArray[$j];
+
+                        // Check if times overlap
+                        $start1 = $res1->hi;
+                        $end1 = $res1->hf;
+                        $start2 = $res2->hi;
+                        $end2 = $res2->hf;
+
+                        if (!($end1 <= $start2 || $start1 >= $end2)) {
+                            $conflicts[] = [
+                                'date' => $date,
+                                'reserva_1' => ['id' => $res1->reserva_id, 'time' => "$start1-$end1"],
+                                'reserva_2' => ['id' => $res2->reserva_id, 'time' => "$start2-$end2"]
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * Creation phase for grouped reservations: create verified requisition groups in Salas system
+     * Issue #31: Create one reservation per requisition group instead of per individual reservation
+     *
+     * @param array $verifiedGroups Array of verified requisition groups
+     * @param array $roomMappings Cached room mappings
+     * @return bool Success status
+     */
+    private function createVerifiedRequisitionGroups(array $verifiedGroups, array $roomMappings): bool
+    {
+        if (empty($verifiedGroups)) {
+            $this->warn('⚠️ No verified requisition groups to create');
+            return true;
+        }
+
+        $totalGroups = count($verifiedGroups);
+        $this->info("  🔸 Creating {$totalGroups} requisition groups...");
+
+        $creationStats = [
+            'total_groups_to_create' => $totalGroups,
+            'successfully_created_groups' => 0,
+            'creation_failures' => 0,
+            'total_reservations_in_groups' => array_sum(array_map(fn($g) => $g['reservation_group']->count(), $verifiedGroups)),
+        ];
+
+        $createdReservationIds = [];
+
+        try {
+            $progressBar = $this->output->createProgressBar($totalGroups);
+            $progressBar->setFormat('debug');
+
+            // Get rate limit configuration
+            $rateLimitPerMinute = config('salas.rate_limiting.requests_per_minute', 30);
+            $delayBetweenRequests = $this->calculateDelayBetweenRequests($rateLimitPerMinute);
+            $requestCount = 0;
+
+            foreach ($verifiedGroups as $groupData) {
+                try {
+                    if ($requestCount > 0) {
+                        usleep($delayBetweenRequests * 1000);
+                    }
+
+                    $reservationGroup = $groupData['reservation_group'];
+
+                    if ($this->isDryRun) {
+                        $creationStats['successfully_created_groups']++;
+                        $this->statistics['dry_run_validations']++;
+                        $this->statistics['successful_imports']++;
+                        $progressBar->advance();
+                        continue;
+                    }
+
+                    // Use new mapper method for grouped reservations
+                    $apiPayload = $this->mapper->mapUranoRequisitionGroupToReservationPayload($reservationGroup);
+
+                    // Create reservation via API
+                    $response = $this->apiClient->post('/api/v1/reservas', $apiPayload);
+
+                    if ($response && !empty($response['data']['id'])) {
+                        $newId = $response['data']['id'];
+                        $createdReservationIds[] = $newId;
+                        $creationStats['successfully_created_groups']++;
+                        $this->statistics['successful_imports']++;
+                        $this->statistics['created_reservations']++;
+
+                        $this->logError('requisition_group_created_successfully', new Exception('Requisition group created'), [
+                            'operation_id' => $this->operationId,
+                            'requisicao_id' => $groupData['requisicao_id'],
+                            'salas_reservation_id' => $newId,
+                            'reservations_in_group' => $reservationGroup->count(),
+                            'is_multi_day' => $reservationGroup->count() > 1
+                        ]);
+                    } else {
+                        throw new Exception('API returned empty or invalid response (missing ID)');
+                    }
+
+                    $requestCount++;
+                    $progressBar->advance();
+
+                } catch (Exception $e) {
+                    $this->logError('requisition_group_creation_failed', $e, [
+                        'operation_id' => $this->operationId,
+                        'requisicao_id' => $groupData['requisicao_id'],
+                        'error_message' => $e->getMessage()
+                    ]);
+                    throw $e; // Re-throw to trigger rollback
+                }
+            }
+
+            $progressBar->finish();
+            $this->newLine(2);
+
+            $this->displayGroupedCreationSummary($creationStats);
+            $this->statistics['creation_phase'] = $creationStats;
+
+            $this->logError('creation_phase_completed', new Exception('Creation phase completed'), [
+                'operation_id' => $this->operationId,
+                'total_groups_created' => $creationStats['successfully_created_groups'],
+                'total_reservations_in_groups' => $creationStats['total_reservations_in_groups'],
+                'success_rate' => 100
+            ]);
+
+            return true;
+
+        } catch (Exception $e) {
+            $creationStats['creation_failures'] = $totalGroups - $creationStats['successfully_created_groups'];
+            $this->statistics['failed_imports'] += $creationStats['creation_failures'];
+
+            $this->error("❌ Critical error during creation phase: {$e->getMessage()}");
+            $this->logError('creation_phase_critical_error', $e, [
+                'operation_id' => $this->operationId,
+                'creation_stats' => $creationStats
+            ]);
+
+            $this->performRollback($createdReservationIds);
+
+            return false;
+        }
+    }
+
+    /**
+     * Display creation phase summary for grouped reservations
+     *
+     * @param array $creationStats Creation statistics
+     */
+    private function displayGroupedCreationSummary(array $creationStats): void
+    {
+        $this->info('📊 Creation Phase Summary (Grouped):');
+        $this->line("  • Total requisition groups to create: {$creationStats['total_groups_to_create']}");
+        $this->line("  • Total reservations in groups: {$creationStats['total_reservations_in_groups']}");
+        $this->line("  • Successfully created groups: {$creationStats['successfully_created_groups']}");
+
+        if ($creationStats['creation_failures'] > 0) {
+            $this->line("  • Creation failures: {$creationStats['creation_failures']}");
+        }
+
+        // Calculate and display success rate
+        if ($creationStats['total_groups_to_create'] > 0) {
+            $successRate = ($creationStats['successfully_created_groups'] / $creationStats['total_groups_to_create']) * 100;
+            $this->line("  • Success rate: " . number_format($successRate, 1) . "%");
+
+            if ($successRate >= 80) {
+                $this->info("✅ Creation phase completed successfully");
+            } else {
+                $this->warn("⚠️ Creation phase completed with some failures");
+            }
+        }
+
+        $this->newLine();
+    }
+
+    /**
      * Display verification errors in a user-friendly format
      *
      * @param array $verificationResult
@@ -1381,55 +1845,69 @@ class ImportReservationsFromUrano extends Command
             $verificationStats = $this->statistics['verification_phase'];
             $this->newLine();
             $this->info('🔍 Verification Phase Details:');
-            
+
+            // Support both grouped and individual verification stats
+            $totalProcessed = $verificationStats['total_groups_processed'] ?? $verificationStats['total_processed'] ?? 0;
+            $totalReservations = $verificationStats['total_reservations'] ?? null;
+
             $verificationTable = [
-                ['Total Processed', $verificationStats['total_processed']],
+                ['Total Processed', $totalProcessed . ($totalReservations ? " groups ({$totalReservations} reservations)" : '')],
                 ['Passed Validation', $verificationStats['passed_validation']],
                 ['Failed Validation', $verificationStats['failed_validation']]
             ];
-            
-            if ($verificationStats['unmappable_rooms'] > 0) {
+
+            if (isset($verificationStats['unmappable_rooms']) && $verificationStats['unmappable_rooms'] > 0) {
                 $verificationTable[] = ['Unmappable Rooms', $verificationStats['unmappable_rooms']];
             }
-            if ($verificationStats['time_conflicts'] > 0) {
+            if (isset($verificationStats['time_conflicts']) && $verificationStats['time_conflicts'] > 0) {
                 $verificationTable[] = ['Time Conflicts', $verificationStats['time_conflicts']];
             }
-            if ($verificationStats['data_validation_errors'] > 0) {
+            if (isset($verificationStats['data_validation_errors']) && $verificationStats['data_validation_errors'] > 0) {
                 $verificationTable[] = ['Data Validation Errors', $verificationStats['data_validation_errors']];
+            }
+            if (isset($verificationStats['internal_conflicts']) && $verificationStats['internal_conflicts'] > 0) {
+                $verificationTable[] = ['Internal Conflicts', $verificationStats['internal_conflicts']];
             }
             if (isset($verificationStats['api_validation_errors']) && $verificationStats['api_validation_errors'] > 0) {
                 $verificationTable[] = ['API Validation Errors', $verificationStats['api_validation_errors']];
             }
-            
+
             $this->table(['Verification Metric', 'Count'], $verificationTable);
         }
         
         // Creation Phase Details
         if (isset($this->statistics['creation_phase'])) {
             $creationStats = $this->statistics['creation_phase'];
-            if ($creationStats['total_to_create'] > 0) {
+
+            // Support both grouped and individual creation stats
+            $totalToCreate = $creationStats['total_groups_to_create'] ?? $creationStats['total_to_create'] ?? 0;
+            $successfullyCreated = $creationStats['successfully_created_groups'] ?? $creationStats['successfully_created'] ?? 0;
+            $creationFailures = $creationStats['creation_failures'] ?? 0;
+            $totalReservations = $creationStats['total_reservations_in_groups'] ?? null;
+
+            if ($totalToCreate > 0) {
                 $this->newLine();
                 $this->info('⚡ Creation Phase Details:');
-                
+
                 $creationTable = [
-                    ['Total to Create', $creationStats['total_to_create']],
-                    ['Successfully Created', $creationStats['successfully_created']],
-                    ['Creation Failures', $creationStats['creation_failures']]
+                    ['Total to Create', $totalToCreate . ($totalReservations ? " groups ({$totalReservations} reservations)" : '')],
+                    ['Successfully Created', $successfullyCreated],
+                    ['Creation Failures', $creationFailures]
                 ];
-                
-                if ($creationStats['api_rate_limit_hits'] > 0) {
+
+                if (isset($creationStats['api_rate_limit_hits']) && $creationStats['api_rate_limit_hits'] > 0) {
                     $creationTable[] = ['Rate Limit Hits', $creationStats['api_rate_limit_hits']];
                 }
-                if ($creationStats['batch_errors'] > 0) {
+                if (isset($creationStats['batch_errors']) && $creationStats['batch_errors'] > 0) {
                     $creationTable[] = ['Batch Errors', $creationStats['batch_errors']];
                 }
-                
+
                 // Calculate creation success rate
-                if ($creationStats['total_to_create'] > 0) {
-                    $creationSuccessRate = ($creationStats['successfully_created'] / $creationStats['total_to_create']) * 100;
+                if ($totalToCreate > 0) {
+                    $creationSuccessRate = ($successfullyCreated / $totalToCreate) * 100;
                     $creationTable[] = ['Creation Success Rate', number_format($creationSuccessRate, 1) . '%'];
                 }
-                
+
                 $this->table(['Creation Metric', 'Count'], $creationTable);
             }
         }

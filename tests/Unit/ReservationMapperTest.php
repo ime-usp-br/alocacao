@@ -395,4 +395,274 @@ class ReservationMapperTest extends TestCase
 
         return $method->invokeArgs($object, $parameters);
     }
+
+    // ==================== Issue #31: Grouping Tests ====================
+
+    /** @test */
+    public function it_maps_single_urano_reservation_without_grouping()
+    {
+        // Create single reservation (no grouping needed)
+        $reservation = (object) [
+            'requisicao_id' => 123,
+            'reserva_id' => 456,
+            'data' => '2024-03-15',
+            'hi' => '08:00:00',
+            'hf' => '10:00:00',
+            'titulo' => 'Test Event',
+            'solicitante' => 'John Doe',
+            'email' => 'john@example.com',
+            'participantes' => 30,
+            'sala_nome' => 'B01',
+            'atividade' => 'Graduação'
+        ];
+
+        $reservations = collect([$reservation]);
+
+        $payload = $this->mapper->mapUranoRequisitionGroupToReservationPayload($reservations);
+
+        // Should use simple time fields (no day_times)
+        $this->assertArrayHasKey('data', $payload);
+        $this->assertArrayHasKey('horario_inicio', $payload);
+        $this->assertArrayHasKey('horario_fim', $payload);
+        $this->assertArrayNotHasKey('day_times', $payload);
+        $this->assertArrayNotHasKey('repeat_days', $payload);
+        $this->assertEquals('2024-03-15', $payload['data']);
+        $this->assertEquals('8:00', $payload['horario_inicio']);
+        $this->assertEquals('10:00', $payload['horario_fim']);
+    }
+
+    /** @test */
+    public function it_maps_multiple_urano_reservations_with_day_times()
+    {
+        // Create multiple reservations (grouping needed)
+        $reservations = collect([
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 456,
+                'data' => '2024-03-18', // Monday
+                'hi' => '08:00:00',
+                'hf' => '10:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'B01',
+                'atividade' => 'Graduação'
+            ],
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 457,
+                'data' => '2024-03-20', // Wednesday
+                'hi' => '08:00:00',
+                'hf' => '10:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'B01',
+                'atividade' => 'Graduação'
+            ],
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 458,
+                'data' => '2024-03-22', // Friday
+                'hi' => '08:00:00',
+                'hf' => '10:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'B01',
+                'atividade' => 'Graduação'
+            ]
+        ]);
+
+        $payload = $this->mapper->mapUranoRequisitionGroupToReservationPayload($reservations);
+
+        // Should use day_times structure
+        $this->assertArrayHasKey('day_times', $payload);
+        $this->assertArrayHasKey('repeat_days', $payload);
+        $this->assertArrayHasKey('repeat_until', $payload);
+        $this->assertArrayNotHasKey('horario_inicio', $payload);
+        $this->assertArrayNotHasKey('horario_fim', $payload);
+
+        // Check day_times structure
+        $this->assertIsArray($payload['day_times']);
+        $this->assertCount(3, $payload['day_times']); // Mon, Wed, Fri
+        $this->assertArrayHasKey('1', $payload['day_times']); // Monday
+        $this->assertArrayHasKey('3', $payload['day_times']); // Wednesday
+        $this->assertArrayHasKey('5', $payload['day_times']); // Friday
+
+        // Check times
+        $this->assertEquals('8:00', $payload['day_times']['1']['start']);
+        $this->assertEquals('10:00', $payload['day_times']['1']['end']);
+
+        // Check repeat_days
+        $this->assertEquals([1, 3, 5], $payload['repeat_days']);
+
+        // Check dates
+        $this->assertEquals('2024-03-18', $payload['data']);
+        $this->assertEquals('2024-03-22', $payload['repeat_until']);
+    }
+
+    /** @test */
+    public function it_throws_exception_for_empty_reservation_group()
+    {
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('Cannot map empty reservation group');
+
+        $emptyGroup = collect([]);
+        $this->mapper->mapUranoRequisitionGroupToReservationPayload($emptyGroup);
+    }
+
+    /** @test */
+    public function it_throws_exception_for_mixed_rooms_in_group()
+    {
+        $reservations = collect([
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 456,
+                'data' => '2024-03-18',
+                'hi' => '08:00:00',
+                'hf' => '10:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'B01',
+                'atividade' => 'Graduação'
+            ],
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 457,
+                'data' => '2024-03-20',
+                'hi' => '08:00:00',
+                'hf' => '10:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'A101', // Different room!
+                'atividade' => 'Graduação'
+            ]
+        ]);
+
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('Reservations in same requisition must have same room');
+
+        $this->mapper->mapUranoRequisitionGroupToReservationPayload($reservations);
+    }
+
+    /** @test */
+    public function it_extracts_repeat_days_from_reservations()
+    {
+        $reservations = collect([
+            (object) ['data' => '2024-03-18'], // Monday (1)
+            (object) ['data' => '2024-03-20'], // Wednesday (3)
+            (object) ['data' => '2024-03-22'], // Friday (5)
+        ]);
+
+        $repeatDays = $this->invokePrivateMethod($this->mapper, 'extractRepeatDaysFromReservations', [$reservations]);
+
+        $this->assertEquals([1, 3, 5], $repeatDays);
+    }
+
+    /** @test */
+    public function it_builds_day_times_from_urano_reservations()
+    {
+        $reservations = collect([
+            (object) [
+                'data' => '2024-03-18', // Monday (1)
+                'hi' => '08:00:00',
+                'hf' => '10:00:00'
+            ],
+            (object) [
+                'data' => '2024-03-20', // Wednesday (3)
+                'hi' => '14:00:00',
+                'hf' => '16:00:00'
+            ]
+        ]);
+
+        $dayTimes = $this->invokePrivateMethod($this->mapper, 'buildDayTimesFromUranoReservations', [$reservations]);
+
+        $this->assertIsArray($dayTimes);
+        $this->assertArrayHasKey('1', $dayTimes); // Monday
+        $this->assertArrayHasKey('3', $dayTimes); // Wednesday
+        $this->assertEquals('8:00', $dayTimes['1']['start']);
+        $this->assertEquals('10:00', $dayTimes['1']['end']);
+        $this->assertEquals('14:00', $dayTimes['3']['start']);
+        $this->assertEquals('16:00', $dayTimes['3']['end']);
+    }
+
+    /** @test */
+    public function it_generates_observations_for_grouped_reservations()
+    {
+        $reservations = collect([
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 456,
+                'data' => '2024-03-18',
+                'participantes' => 30,
+                'email' => 'john@example.com'
+            ],
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 457,
+                'data' => '2024-03-20',
+                'participantes' => 30,
+                'email' => 'john@example.com'
+            ]
+        ]);
+
+        $observations = $this->invokePrivateMethod($this->mapper, 'generateUranoObservationsForGroup', [$reservations]);
+
+        $this->assertStringContainsString('Importado do sistema Urano', $observations);
+        $this->assertStringContainsString('ID Requisição Urano: 123', $observations);
+        $this->assertStringContainsString('IDs Reservas Urano: 456, 457', $observations);
+        $this->assertStringContainsString('Participantes: 30', $observations);
+        $this->assertStringContainsString('Contato: john@example.com', $observations);
+        $this->assertStringContainsString('Datas: 18/03/2024, 20/03/2024', $observations);
+    }
+
+    /** @test */
+    public function it_handles_different_times_per_day_in_group()
+    {
+        $reservations = collect([
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 456,
+                'data' => '2024-03-18', // Monday
+                'hi' => '08:00:00',
+                'hf' => '10:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'B01',
+                'atividade' => 'Graduação'
+            ],
+            (object) [
+                'requisicao_id' => 123,
+                'reserva_id' => 457,
+                'data' => '2024-03-20', // Wednesday - different time
+                'hi' => '14:00:00',
+                'hf' => '16:00:00',
+                'titulo' => 'Test Event',
+                'solicitante' => 'John Doe',
+                'email' => 'john@example.com',
+                'participantes' => 30,
+                'sala_nome' => 'B01',
+                'atividade' => 'Graduação'
+            ]
+        ]);
+
+        $payload = $this->mapper->mapUranoRequisitionGroupToReservationPayload($reservations);
+
+        // Should use day_times with different times per day
+        $this->assertArrayHasKey('day_times', $payload);
+        $this->assertEquals('8:00', $payload['day_times']['1']['start']); // Monday 8-10
+        $this->assertEquals('10:00', $payload['day_times']['1']['end']);
+        $this->assertEquals('14:00', $payload['day_times']['3']['start']); // Wednesday 14-16
+        $this->assertEquals('16:00', $payload['day_times']['3']['end']);
+    }
 }

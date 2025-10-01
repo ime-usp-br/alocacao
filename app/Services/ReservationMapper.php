@@ -771,4 +771,185 @@ class ReservationMapper
 
         return $finalidadeId;
     }
+
+    /**
+     * Map grouped Urano reservations (by requisicao_id) to Salas API reservation payload
+     * This method groups multiple RESERVA records from the same REQUISICAO into a single
+     * Salas reservation with day_times structure (matching migrate-to-salas behavior)
+     *
+     * @param Collection $reservations Collection of reservation stdClass objects from same requisicao_id
+     * @return array Salas API payload with day_times for multi-day or simple times for single-day
+     * @throws Exception
+     */
+    public function mapUranoRequisitionGroupToReservationPayload(Collection $reservations): array
+    {
+        if ($reservations->isEmpty()) {
+            throw new Exception('Cannot map empty reservation group');
+        }
+
+        // Get first reservation for common data (all in group share requisicao data)
+        $firstReservation = $reservations->first();
+
+        // Validate all reservations in group have same room
+        $uniqueRooms = $reservations->pluck('sala_nome')->unique();
+        if ($uniqueRooms->count() > 1) {
+            throw new Exception('Reservations in same requisition must have same room. Found: ' . $uniqueRooms->implode(', '));
+        }
+
+        // Build base payload from first reservation
+        $payload = [
+            'nome' => $this->generateUranoReservationName([
+                'titulo' => $firstReservation->titulo,
+                'solicitante' => $firstReservation->solicitante
+            ]),
+            'sala_id' => $this->getSalaIdFromNome($firstReservation->sala_nome),
+            'finalidade_id' => $this->mapUranoDataToFinalidade([
+                'titulo' => $firstReservation->titulo,
+                'tipo_atividade' => $firstReservation->atividade ?? null
+            ]),
+            'tipo_responsaveis' => 'eu',
+            'observacoes' => $this->generateUranoObservationsForGroup($reservations),
+        ];
+
+        // Determine if single or multiple reservations
+        if ($reservations->count() === 1) {
+            // Single reservation - use simple time fields
+            $payload['data'] = Carbon::parse($firstReservation->data)->format('Y-m-d');
+            $payload['horario_inicio'] = $this->formatUranoTime($firstReservation->hi);
+            $payload['horario_fim'] = $this->formatUranoTime($firstReservation->hf);
+
+            $this->log('debug', 'Mapping single Urano reservation (no grouping needed)', [
+                'requisicao_id' => $firstReservation->requisicao_id,
+                'reserva_id' => $firstReservation->reserva_id,
+                'payload' => $payload
+            ]);
+        } else {
+            // Multiple reservations - use day_times structure with recurrence
+            $repeatDays = $this->extractRepeatDaysFromReservations($reservations);
+            $dayTimes = $this->buildDayTimesFromUranoReservations($reservations);
+
+            // Use earliest date as start date
+            $startDate = $reservations->min('data');
+            $endDate = $reservations->max('data');
+
+            $payload['data'] = Carbon::parse($startDate)->format('Y-m-d');
+            $payload['repeat_days'] = $repeatDays;
+            $payload['repeat_until'] = Carbon::parse($endDate)->format('Y-m-d');
+            $payload['day_times'] = $dayTimes;
+
+            $this->log('debug', 'Mapping grouped Urano reservations with day_times', [
+                'requisicao_id' => $firstReservation->requisicao_id,
+                'reservation_count' => $reservations->count(),
+                'repeat_days' => $repeatDays,
+                'day_times' => $dayTimes,
+                'date_range' => [$payload['data'], $payload['repeat_until']],
+                'payload' => $payload
+            ]);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Extract repeat_days array from Urano reservations
+     * Converts reservation dates to day-of-week numbers (0=Sunday, 6=Saturday)
+     *
+     * @param Collection $reservations
+     * @return array Sorted unique array of day numbers
+     */
+    private function extractRepeatDaysFromReservations(Collection $reservations): array
+    {
+        $days = [];
+
+        foreach ($reservations as $reservation) {
+            $date = Carbon::parse($reservation->data);
+            $dayOfWeek = $date->dayOfWeek; // 0 (Sunday) through 6 (Saturday)
+            $days[] = $dayOfWeek;
+        }
+
+        // Return sorted unique days
+        $uniqueDays = array_unique($days);
+        sort($uniqueDays);
+
+        return array_values($uniqueDays);
+    }
+
+    /**
+     * Build day_times array from Urano reservations
+     * Groups reservations by day-of-week and extracts start/end times
+     *
+     * @param Collection $reservations
+     * @return array day_times structure: ["1" => ["start" => "8:00", "end" => "10:00"], ...]
+     */
+    private function buildDayTimesFromUranoReservations(Collection $reservations): array
+    {
+        $dayTimes = [];
+
+        foreach ($reservations as $reservation) {
+            $date = Carbon::parse($reservation->data);
+            $dayOfWeek = (string) $date->dayOfWeek;
+
+            $startTime = $this->formatUranoTime($reservation->hi);
+            $endTime = $this->formatUranoTime($reservation->hf);
+
+            // If multiple reservations on same day, use first one
+            // (validation should catch conflicts within group)
+            if (!isset($dayTimes[$dayOfWeek])) {
+                $dayTimes[$dayOfWeek] = [
+                    'start' => $startTime,
+                    'end' => $endTime
+                ];
+            }
+        }
+
+        return $dayTimes;
+    }
+
+    /**
+     * Generate observations from grouped Urano reservations
+     * Includes all reservation IDs and requisition metadata
+     *
+     * @param Collection $reservations
+     * @return string
+     */
+    private function generateUranoObservationsForGroup(Collection $reservations): string
+    {
+        $firstReservation = $reservations->first();
+        $observations = [];
+
+        $observations[] = "Importado do sistema Urano";
+
+        if (isset($firstReservation->requisicao_id)) {
+            $observations[] = "ID Requisição Urano: {$firstReservation->requisicao_id}";
+        }
+
+        // List all reservation IDs in the group
+        $reservaIds = $reservations->pluck('reserva_id')->toArray();
+        $observations[] = "IDs Reservas Urano: " . implode(', ', $reservaIds);
+
+        if (isset($firstReservation->participantes) && $firstReservation->participantes > 0) {
+            $observations[] = "Participantes: {$firstReservation->participantes}";
+        }
+
+        if (isset($firstReservation->email) && !empty($firstReservation->email)) {
+            $observations[] = "Contato: {$firstReservation->email}";
+        }
+
+        // Add dates covered
+        $dates = $reservations->pluck('data')->map(function($date) {
+            try {
+                // Try Y-m-d format first (most common)
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                    return Carbon::createFromFormat('Y-m-d', $date)->format('d/m/Y');
+                }
+                // Fallback to parse
+                return Carbon::parse($date)->format('d/m/Y');
+            } catch (Exception $e) {
+                return $date; // Return as-is if parsing fails
+            }
+        })->toArray();
+        $observations[] = "Datas: " . implode(', ', $dates);
+
+        return implode("\n", $observations);
+    }
 }
