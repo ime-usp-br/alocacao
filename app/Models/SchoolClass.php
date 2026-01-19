@@ -228,15 +228,23 @@ class SchoolClass extends Model
         return array_column(array_unique(DB::fetchAll($query, $param),SORT_REGULAR), "coddis");
     }
 
-    public static function getFromReplicadoBySchoolTerm(SchoolTerm $schoolTerm)
+    public static function getFromReplicadoBySchoolTerm(SchoolTerm $schoolTerm, ?\Closure $onProgress = null, ?\Closure $onInit = null)
     {
         $disciplinas = SELF::getGrdDisciplinesFromReplicadoByInstitute(env("UNIDADE"));
+
+        if ($onInit) {
+            $totalSteps = count($disciplinas) + count(CourseInformation::$codtur_by_course) + 1;
+            $onInit($totalSteps);
+        }
 
         $schoolclasses = [];
 
         $dtafimtur = $schoolTerm->period == "1° Semestre" ? $schoolTerm->year."-06-01" : $schoolTerm->year."-11-01";
 
         foreach($disciplinas as $disc){
+            if ($onProgress) {
+                $onProgress();
+            }
             $coddis = $disc['coddis'];
 
             $codtur = $schoolTerm->year . ($schoolTerm->period == "1° Semestre" ? "1%" : "2%");
@@ -317,6 +325,9 @@ class SchoolClass extends Model
         $codtur = $schoolTerm->year . ($schoolTerm->period == "1° Semestre" ? "1%" : "2%");
 
         foreach(CourseInformation::$codtur_by_course as $sufixo_codtur=>$course){
+            if ($onProgress) {
+                $onProgress();
+            }
             foreach(SELF::getExternalDisciplinesFromReplicadoByCourse($course) as $coddis){
                 $query = " SELECT T.codtur, T.coddis, D.nomdis, T.dtainitur, T.dtafimtur";
                 $query .= " FROM TURMAGR AS T, DISCIPLINAGR AS D, DISCIPGRCODIGO AS DC";
@@ -359,7 +370,16 @@ class SchoolClass extends Model
             'sglund' => env("UNIDADE"),
         ];
 
-        $codund = array_unique(DB::fetchAll($query, $param),SORT_REGULAR)[0]['codund'];
+        $res = array_unique(DB::fetchAll($query, $param),SORT_REGULAR);
+        
+        if (empty($res)) {
+            if ($onProgress) {
+                $onProgress();
+            }
+            return $schoolclasses;
+        }
+
+        $codund = $res[0]['codund'];
 
         $query = " SELECT D.sgldis as coddis, D.nomdis, D.numseqdis, O.numofe, O.dtainiofe as dtainitur, O.dtafimofe as dtafimtur";
         $query .= " FROM DISCIPLINA AS D, OFERECIMENTO AS O";
@@ -393,6 +413,10 @@ class SchoolClass extends Model
             $turmas[$key]['externa'] = false;
             unset($turmas[$key]['numseqdis']);
             unset($turmas[$key]['numofe']);
+        }
+
+        if ($onProgress) {
+            $onProgress();
         }
 
         $schoolclasses = array_merge($schoolclasses, $turmas);
