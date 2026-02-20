@@ -70,30 +70,27 @@ class AllocateFirstSemesters extends Command
         $this->info("Encontradas " . $classesToAllocate->count() . " turmas para processar.");
 
         if (!$this->option('dry-run') && !$this->option('force')) {
-            if (!$this->confirm('Deseja prosseguir com a alocação?')) {
+            if (!$this->confirm('Deseja prosseguir com a alocação padrão (apenas turmas sem sala)?')) {
                 $this->info('Operação cancelada.');
                 return 0;
             }
         }
 
         $allocatedCount = 0;
+        $movedCount = 0;
+        $evictedCount = 0;
         $notFoundCount = 0;
-        $alreadyAllocatedCount = 0;
+        $alreadyCorrectCount = 0;
 
         $bar = $this->output->createProgressBar($classesToAllocate->count());
         $bar->start();
 
         foreach ($classesToAllocate as $class) {
-            if ($class->room_id) {
-                $alreadyAllocatedCount++;
-                $bar->advance();
-                continue;
-            }
+            // Determine a turma "alocável" (se for fusion, é o master)
+            $targetClass = $class->fusion_id ? $class->fusion->master : $class;
 
             // Tenta encontrar a turma correspondente no ano passado
-            // Mesma disciplina e mesmo final da turma (ex: ...45, ...48)
             $suffix = substr($class->codtur, -2);
-            
             $previousClass = SchoolClass::where('school_term_id', $previousTerm->id)
                 ->where('coddis', $class->coddis)
                 ->where('codtur', 'like', "%$suffix")
@@ -101,12 +98,54 @@ class AllocateFirstSemesters extends Command
                 ->first();
 
             if ($previousClass) {
-                if (!$this->option('dry-run')) {
-                    $class->room_id = $previousClass->room_id;
-                    $class->save();
+                $targetRoom = $previousClass->room;
+
+                // Se já estiver na sala correta, nada a fazer
+                if ($targetClass->room_id == $targetRoom->id) {
+                    $alreadyCorrectCount++;
+                    $bar->advance();
+                    continue;
                 }
-                $allocatedCount++;
-                $this->line("\n[OK] {$class->coddis} (T.{$class->codtur}) -> {$previousClass->room->nome}");
+
+                // Se estiver em outra sala e não for --force, pula
+                if ($targetClass->room_id && !$this->option('force')) {
+                    $bar->advance();
+                    continue;
+                }
+
+                // Lógica de alocação/movimentação
+                if ($this->option('force') || !$targetClass->room_id) {
+                    $actionType = $targetClass->room_id ? 'MOVED' : 'ALLOCATED';
+                    
+                    // Se houver conflito na sala de destino, identifica/desocupa
+                    $conflictingMasters = SchoolClass::where('school_term_id', $currentTerm->id)
+                        ->where('room_id', $targetRoom->id)
+                        ->get();
+
+                    foreach ($conflictingMasters as $masterX) {
+                        if ($targetClass->id != $masterX->id && $targetClass->isInConflict($masterX)) {
+                            // Se masterX estiver em fusion e for o mesmo fusion do targetClass, não despeja
+                            if ($targetClass->fusion_id && $targetClass->fusion_id == $masterX->fusion_id) {
+                                continue;
+                            }
+                            
+                            if (!$this->option('dry-run')) {
+                                $masterX->room_id = null;
+                                $masterX->save();
+                            }
+                            $evictedCount++;
+                            $this->line("\n[EVICT] {$masterX->coddis} (T.{$masterX->codtur}) removida de {$targetRoom->nome} por conflito.");
+                        }
+                    }
+
+                    if (!$this->option('dry-run')) {
+                        $targetClass->room_id = $targetRoom->id;
+                        $targetClass->save();
+                    }
+
+                    if ($actionType == 'MOVED') $movedCount++; else $allocatedCount++;
+                    $this->line("\n[$actionType] {$class->coddis} (T.{$class->codtur}) -> {$targetRoom->nome}");
+                }
             } else {
                 $notFoundCount++;
             }
@@ -122,7 +161,9 @@ class AllocateFirstSemesters extends Command
             [
                 ['Total processado', $classesToAllocate->count()],
                 ['Novas alocações', $allocatedCount],
-                ['Turmas já alocadas', $alreadyAllocatedCount],
+                ['Turmas movidas de sala', $movedCount],
+                ['Turmas desalojadas (conflito)', $evictedCount],
+                ['Turmas já na sala correta', $alreadyCorrectCount],
                 ['Salas não encontradas no ano passado', $notFoundCount],
             ]
         );
