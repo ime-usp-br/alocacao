@@ -18,6 +18,7 @@ use App\Models\Room;
 use App\Models\CourseInformation;
 use App\Models\Fusion;
 use App\Models\Course;
+use App\Services\HistoricalEnrollmentService;
 
 class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
 {
@@ -131,8 +132,19 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
                     }
 
                     $schoolclass->calcEstimadedEnrollment();
-                    
                     $schoolclass->save();
+
+                    // Issue #35: Aplica correção heurística por média histórica para turmas de 1º semestre
+                    try {
+                        $historicalService = app(HistoricalEnrollmentService::class);
+                        $historicalService->applyToSchoolClass($schoolclass);
+                    } catch (\Exception $e) {
+                        \Log::error('ProcessImportSchoolClasses: erro ao aplicar média histórica', [
+                            'coddis' => $schoolclass->coddis,
+                            'codtur' => $schoolclass->codtur,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
 
                     $schoolclass->searchForFusion();
                 }
