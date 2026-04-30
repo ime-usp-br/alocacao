@@ -18,18 +18,70 @@ Sistema para distribuição das disciplinas nas salas do IME.
 
 ## Implementação
 
+### Docker (recomendado)
+
 Clone o repositório
 
     git clone https://github.com/ime-usp-br/alocacao.git
-    
+    cd alocacao
+
+Copie o arquivo de configuração
+
+    cp .env.example .env
+
+Edite o `.env` e ajuste ao menos as seguintes variáveis:
+
+- `APP_URL` — URL da aplicação, incluindo a porta (ex: `http://localhost:8000`)
+- `DOCKER_APP_PORT` — porta exposta no host (default: `8080`)
+- `DOCKER_DB_PORT` — porta do MySQL no host (default: `3307`)
+- Variáveis do banco de dados (`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`)
+- Variáveis do <a href="https://github.com/uspdev/senhaunica-socialite">senhaunica-socialite</a>
+- Variáveis do <a href="https://github.com/uspdev/replicado">replicado</a>
+
+Suba os containers
+
+    docker compose up -d --build
+
+O comando acima sobe automaticamente:
+- **app** — PHP 7.4-FPM + Composer + Node
+- **nginx** — servidor web
+- **mysql:5.7** — banco de dados
+- **redis** — cache e filas
+
+A aplicação estará disponível em `http://localhost:${DOCKER_APP_PORT}`.
+
+Comandos úteis
+
+    # Ver logs
+    docker compose logs -f app
+
+    # Acessar o container da aplicação
+    docker compose exec app bash
+
+    # Rodar comandos artisan
+    docker compose exec app php artisan migrate
+    docker compose exec app php artisan queue:work --tries=3
+
+    # Parar tudo
+    docker compose down
+
+    # Reconstruir imagem (após alterar o Dockerfile)
+    docker compose up -d --build
+
+### Instalação manual (sem Docker)
+
+Clone o repositório
+
+    git clone https://github.com/ime-usp-br/alocacao.git
+
 Instale as dependências
 
     composer install
-    
+
 Restaure o arquivo de configuração
 
     cp .env.example .env
-    
+
 Além de configurar o banco de dados e o serviço de e-mail, você precisara configurar <a href="https://github.com/uspdev/senhaunica-socialite">senhaunica-socialite</a>
 
     # SENHAUNICA-SOCIALITE ######################################
@@ -59,7 +111,7 @@ Além de configurar o banco de dados e o serviço de e-mail, você precisara con
     #SENHAUNICA_DEBUG=true
 
     # SENHAUNICA-SOCIALITE ######################################
-    
+
 Configure as variaveis do <a href="https://github.com/uspdev/replicado">replicado</a>
 
     REPLICADO_HOST=
@@ -68,29 +120,27 @@ Configure as variaveis do <a href="https://github.com/uspdev/replicado">replicad
     REPLICADO_USERNAME=
     REPLICADO_PASSWORD=
     REPLICADO_SYBASE=
-    
+
 Gere uma nova chave
 
     php artisan key:generate
-    
+
 Crie as tabelas do banco de dados
 
     php artisan migrate --seed
-    
+
 Instale o supervisor
 
     apt install supervisor
-    
+
 Copie o arquivo de configuração do supervisor, lembre-se de alterar o diretório do projeto
 
     cp supervisor.conf.example /etc/supervisor/conf.d/laravel-worker.conf
-    
 
 Indique ao supervisor que há um novo arquivo de configuração
 
     supervisorctl reread
     supervisorctl update
-    
 
 Instale os pacotes LaTeX para gerar os relatórios
 

@@ -1,0 +1,51 @@
+# Ignorar arquivos e diretórios do Git
+.git
+.gitignore
+.gitattributes
+
+# Ignorar dependências instaladas localmente
+vendor
+node_modules
+
+# Ignorar arquivos de ambiente
+.env
+.env.testing
+.env.backup
+.env.local
+
+# Ignorar caches e logs do Laravel
+bootstrap/cache/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*
+storage/debugbar
+
+# Ignorar arquivos Docker
+docker-compose*.yml
+Dockerfile*
+.docker
+
+# Ignorar arquivos do editor
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Ignorar arquivos de sistema operacional
+.DS_Store
+Thumbs.db
+
+# Ignorar documentação e scripts auxiliares
+README.md
+scripts
+
+# Ignorar arquivos de teste e CI
+.phpunit.result.cache
+phpunit.xml
+.styleci.yml
+.editorconfig
+
+# Ignorar imagens de logo desnecessárias para o container
+*.jpg
