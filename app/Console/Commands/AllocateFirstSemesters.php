@@ -7,6 +7,7 @@ use App\Models\SchoolTerm;
 use App\Models\SchoolClass;
 use App\Models\CourseInformation;
 use App\Models\Room;
+use App\Services\HistoricalEnrollmentService;
 
 class AllocateFirstSemesters extends Command
 {
@@ -17,7 +18,8 @@ class AllocateFirstSemesters extends Command
      */
     protected $signature = 'alocacao:allocate-first-semesters 
                             {--dry-run : Apenas simula a alocação sem salvar alterações}
-                            {--force : Ignora a confirmação antes de executar}';
+                            {--force : Ignora a confirmação antes de executar}
+                            {--recalculate-historical-average : Recalcula a média histórica de inscritos para turmas de 1º semestre antes de alocar}';
 
     /**
      * The console command description.
@@ -68,6 +70,27 @@ class AllocateFirstSemesters extends Command
         }
 
         $this->info("Encontradas " . $classesToAllocate->count() . " turmas para processar.");
+
+        // Issue #35: Recálculo explícito da média histórica de inscritos
+        if ($this->option('recalculate-historical-average')) {
+            $this->info('Recalculando médias históricas de inscritos para turmas de 1º semestre...');
+            $historicalService = app(HistoricalEnrollmentService::class);
+            $recalculatedCount = 0;
+
+            foreach ($classesToAllocate as $class) {
+                try {
+                    if ($historicalService->applyToSchoolClass($class, true)) {
+                        $recalculatedCount++;
+                        $this->line("  [Recalculado] {$class->coddis} (T.{$class->codtur}) -> estmtr = {$class->estmtr}");
+                    }
+                } catch (\Exception $e) {
+                    $this->error("  [Erro] {$class->coddis}: " . $e->getMessage());
+                }
+            }
+
+            $this->info("Médias históricas recalculadas para {$recalculatedCount} turmas.");
+            $this->newLine();
+        }
 
         if (!$this->option('dry-run') && !$this->option('force')) {
             if (!$this->confirm('Deseja prosseguir com a alocação padrão (apenas turmas sem sala)?')) {

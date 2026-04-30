@@ -12,6 +12,7 @@ use App\Models\Room;
 use App\Models\CourseInformation;
 use App\Models\Fusion;
 use App\Models\Course;
+use App\Services\HistoricalEnrollmentService;
 
 class UpdateAllocations extends Command
 {
@@ -172,6 +173,16 @@ class UpdateAllocations extends Command
                         // Estimativa de matriculas
                         $schoolclass->calcEstimadedEnrollment();
                         $schoolclass->save();
+
+                        // Issue #35: Aplica correção heurística por média histórica para turmas de 1º semestre
+                        try {
+                            $historicalService = app(HistoricalEnrollmentService::class);
+                            if ($historicalService->applyToSchoolClass($schoolclass)) {
+                                $this->line("  [Média Histórica] {$schoolclass->coddis} (T.{$schoolclass->codtur}) -> estmtr ajustado para {$schoolclass->estmtr}");
+                            }
+                        } catch (\Exception $e) {
+                            $this->error("  [Média Histórica] Erro em {$schoolclass->coddis}: " . $e->getMessage());
+                        }
 
                         // Fusão
                         $schoolclass->searchForFusion();

@@ -30,11 +30,15 @@ class SchoolClass extends Model
         'school_term_id',
         'room_id',
         'fusion_id',
+        'historical_avg_applied_at',
+        'historical_avg_metadata',
     ];
 
     protected $casts = [
         'dtainitur' => 'date:d/m/Y',
         'dtafimtur' => 'date:d/m/Y',
+        'historical_avg_applied_at' => 'datetime',
+        'historical_avg_metadata' => 'array',
     ];
 
     public function setDtainiturAttribute($value)
