@@ -26,7 +26,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $term = SchoolTerm::factory()->create(['year' => 2025, 'period' => '1° Semestre']);
         $class = SchoolClass::factory()->undergraduate()->firstSemester()->create([
             'school_term_id' => $term->id,
-            'codtur' => '2025101',
+            'codtur' => '2025141',
         ]);
 
         $courseInfo = CourseInformation::create([
@@ -50,8 +50,32 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $term = SchoolTerm::factory()->create(['year' => 2025, 'period' => '1° Semestre']);
         $class = SchoolClass::factory()->graduate()->firstSemester()->create([
             'school_term_id' => $term->id,
-            'codtur' => '2025101',
+            'codtur' => '2025141',
         ]);
+
+        $service = new HistoricalEnrollmentService();
+        $this->assertFalse($service->isFirstSemesterClass($class));
+    }
+
+    /** @test */
+    public function it_rejects_non_ime_class_with_suffix_below_40()
+    {
+        $term = SchoolTerm::factory()->create(['year' => 2025, 'period' => '1° Semestre']);
+        $class = SchoolClass::factory()->undergraduate()->firstSemester()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '2025105', // sufixo 05 < 40
+        ]);
+
+        $courseInfo = CourseInformation::create([
+            'nomcur' => 'Matemática',
+            'codcur' => '45031',
+            'numsemidl' => 1,
+            'perhab' => 'integral',
+            'codhab' => '1',
+            'nomhab' => 'Bacharelado',
+            'tipobg' => 'O',
+        ]);
+        $class->courseinformations()->attach($courseInfo);
 
         $service = new HistoricalEnrollmentService();
         $this->assertFalse($service->isFirstSemesterClass($class));
@@ -63,7 +87,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $term = SchoolTerm::factory()->create(['year' => 2025, 'period' => '2° Semestre']);
         $class = SchoolClass::factory()->undergraduate()->secondSemester()->create([
             'school_term_id' => $term->id,
-            'codtur' => '2025201',
+            'codtur' => '2025241',
         ]);
 
         $courseInfo = CourseInformation::create([
@@ -87,7 +111,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $term = SchoolTerm::factory()->create(['year' => 2025, 'period' => '1° Semestre']);
         $class = SchoolClass::factory()->undergraduate()->firstSemester()->create([
             'school_term_id' => $term->id,
-            'codtur' => '2025101',
+            'codtur' => '2025141',
         ]);
 
         $courseInfo = CourseInformation::create([
@@ -106,24 +130,45 @@ class HistoricalEnrollmentServiceTest extends TestCase
     }
 
     /** @test */
-    public function it_applies_historical_average_when_deviation_exceeds_threshold()
+    public function it_applies_historical_average_when_subdimension_deviation_exceeds_threshold()
     {
         $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
         $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
         $service->shouldReceive('calculateHistoricalAverage')->andReturn([
             'average' => 50.0,
             'samples' => 3,
             'years' => [2022, 2023, 2024],
         ]);
 
-        $class = SchoolClass::factory()->create(['estmtr' => 100]);
+        // Subdimensionado: 40 inscritos vs média 50 (desvio = 20%)
+        $class = SchoolClass::factory()->create(['estmtr' => 40]);
 
         $this->assertTrue($service->applyToSchoolClass($class, true));
         $this->assertEquals(50, $class->estmtr);
         $this->assertNotNull($class->historical_avg_applied_at);
         $this->assertIsArray($class->historical_avg_metadata);
         $this->assertEquals(50.0, $class->historical_avg_metadata['average']);
-        $this->assertEquals(100.0, $class->historical_avg_metadata['deviation_percent']);
+        $this->assertEquals(20.0, $class->historical_avg_metadata['deviation_percent']);
+    }
+
+    /** @test */
+    public function it_does_not_apply_when_superdimension_deviation_exceeds_threshold()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
+        $service->shouldReceive('calculateHistoricalAverage')->andReturn([
+            'average' => 50.0,
+            'samples' => 3,
+            'years' => [2022, 2023, 2024],
+        ]);
+
+        // Superdimensionado: 100 inscritos vs média 50 — não deve ser corrigido
+        $class = SchoolClass::factory()->create(['estmtr' => 100]);
+
+        $this->assertFalse($service->applyToSchoolClass($class, true));
+        $this->assertEquals(100, $class->estmtr);
     }
 
     /** @test */
@@ -131,6 +176,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
     {
         $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
         $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
         $service->shouldReceive('calculateHistoricalAverage')->andReturn([
             'average' => 100.0,
             'samples' => 3,
@@ -148,16 +194,18 @@ class HistoricalEnrollmentServiceTest extends TestCase
     {
         $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
         $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
         $service->shouldReceive('calculateHistoricalAverage')->andReturn([
             'average' => 50.0,
             'samples' => 1,
             'years' => [2024],
         ]);
 
-        $class = SchoolClass::factory()->create(['estmtr' => 100]);
+        // Subdimensionado, mas amostras insuficientes
+        $class = SchoolClass::factory()->create(['estmtr' => 40]);
 
         $this->assertFalse($service->applyToSchoolClass($class, true));
-        $this->assertEquals(100, $class->estmtr);
+        $this->assertEquals(40, $class->estmtr);
     }
 
     /** @test */
@@ -165,6 +213,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
     {
         $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
         $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
 
         $class = SchoolClass::factory()->create([
             'estmtr' => 100,
@@ -179,6 +228,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
     {
         $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
         $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
         $service->shouldReceive('calculateHistoricalAverage')->andReturn([
             'average' => 50.0,
             'samples' => 3,
@@ -186,7 +236,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
         ]);
 
         $class = SchoolClass::factory()->create([
-            'estmtr' => 100,
+            'estmtr' => 40,
             'historical_avg_applied_at' => now()->subDay(),
         ]);
 
@@ -199,13 +249,14 @@ class HistoricalEnrollmentServiceTest extends TestCase
     {
         $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
         $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
         $service->shouldReceive('calculateHistoricalAverage')->andReturn([
             'average' => 50.0,
             'samples' => 3,
             'years' => [2022, 2023, 2024],
         ]);
 
-        $class = SchoolClass::factory()->create(['estmtr' => 100]);
+        $class = SchoolClass::factory()->create(['estmtr' => 40]);
         $originalUpdatedAt = $class->updated_at;
 
         $this->assertTrue($service->applyToSchoolClass($class, true, true));
@@ -213,7 +264,7 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $this->assertNotNull($class->historical_avg_applied_at);
 
         $class->refresh();
-        $this->assertEquals(100, $class->estmtr);
+        $this->assertEquals(40, $class->estmtr);
         $this->assertNull($class->historical_avg_applied_at);
     }
 }

@@ -16,6 +16,10 @@ use Exception;
  * (numins), calculado previamente por calcEstimadedEnrollment. Quando a diferença
  * entre inscritos atuais e a média histórica de matriculados supera o threshold,
  * o estmtr é corrigido para a média histórica.
+ *
+ * IMPORTANTE: turmas com observações especiais em obstur (ex: dependentes,
+ * horário fictício, aproveitamento de estudos) são ignoradas tanto no cálculo
+ * da média histórica quanto na aplicação da correção.
  */
 class HistoricalEnrollmentService
 {
@@ -29,6 +33,19 @@ class HistoricalEnrollmentService
      */
     private int $minHistoricalYears = 2;
 
+    /**
+     * Palavras-chave em obstur que indicam turmas especiais e devem ser excluídas.
+     */
+    private array $exclusionObsturKeywords = [
+        'dependente',
+        'fictício',
+        'ficticio',
+        'apenas para',
+        'aproveitamento',
+        'PCoC',
+        'divididas',
+    ];
+
     public function __construct()
     {
         $this->thresholdPercent = (float) config('alocacao.historical_threshold_percent', 7.0);
@@ -36,9 +53,13 @@ class HistoricalEnrollmentService
     }
 
     /**
-     * Calcula a média histórica de matriculados para uma disciplina em turmas de 1º semestre.
+     * Calcula a média histórica de matriculados para uma disciplina/turma em 1º semestres anteriores.
+     *
+     * A busca histórica usa o sufixo da turma (últimos 2 dígitos do codtur), garantindo que
+     * apenas turmas com o mesmo número sejam comparadas ao longo dos anos.
      *
      * @param string $coddis Código da disciplina
+     * @param string $codtur Código completo da turma (AAAASXX)
      * @param int|null $currentYear Ano atual (null = ano do período letivo mais recente)
      * @return array{
      *   average: float|null,
@@ -46,7 +67,7 @@ class HistoricalEnrollmentService
      *   years: int[]
      * }
      */
-    public function calculateHistoricalAverage(string $coddis, ?int $currentYear = null): array
+    public function calculateHistoricalAverage(string $coddis, string $codtur, ?int $currentYear = null): array
     {
         $result = [
             'average' => null,
@@ -59,11 +80,13 @@ class HistoricalEnrollmentService
             $currentYear = $latestTerm ? (int) $latestTerm->year : (int) date('Y');
         }
 
-        $historicalData = $this->fetchHistoricalEnrollments($coddis, $currentYear);
+        $codturSuffix = substr($codtur, -2);
+        $historicalData = $this->fetchHistoricalEnrollments($coddis, $codturSuffix, $currentYear);
 
         if (empty($historicalData)) {
             Log::info('HistoricalEnrollmentService: no historical data found', [
                 'coddis' => $coddis,
+                'codtur_suffix' => $codturSuffix,
                 'current_year' => $currentYear,
             ]);
             return $result;
@@ -78,6 +101,7 @@ class HistoricalEnrollmentService
 
         Log::info('HistoricalEnrollmentService: calculation completed', [
             'coddis' => $coddis,
+            'codtur_suffix' => $codturSuffix,
             'average' => $result['average'],
             'samples' => $result['samples'],
             'years' => $result['years'],
@@ -88,6 +112,10 @@ class HistoricalEnrollmentService
 
     /**
      * Aplica a média histórica a uma SchoolClass caso os critérios sejam atendidos.
+     *
+     * A correção só é aplicada em caso de SUBDIMENSIONAMENTO (inscritos atuais
+     * menores que a média histórica). Turmas com observações especiais em obstur
+     * são ignoradas completamente.
      *
      * @param SchoolClass $schoolClass
      * @param bool $force Forçar recálculo mesmo que já tenha sido aplicado
@@ -101,13 +129,18 @@ class HistoricalEnrollmentService
             return false;
         }
 
+        // Ignora turmas com observações especiais (ex: dependentes, fictícias, etc.)
+        if ($this->hasSpecialObstur($schoolClass)) {
+            return false;
+        }
+
         // Se já foi aplicado e não é force, pula
         if (!$force && $schoolClass->historical_avg_applied_at) {
             return false;
         }
 
         $year = (int) substr($schoolClass->codtur, 0, 4);
-        $calculation = $this->calculateHistoricalAverage($schoolClass->coddis, $year);
+        $calculation = $this->calculateHistoricalAverage($schoolClass->coddis, $schoolClass->codtur, $year);
 
         // Não aplica sem dados históricos suficientes
         if ($calculation['samples'] < $this->minHistoricalYears) {
@@ -118,7 +151,8 @@ class HistoricalEnrollmentService
         $currentEnrollment = $schoolClass->estmtr;
 
         if ($calculation['average'] !== null && $currentEnrollment !== null && $calculation['average'] > 0) {
-            $deviationPercent = abs(($currentEnrollment - $calculation['average']) / $calculation['average']) * 100;
+            // Só corrige subdimensionamento (inscritos atuais < média histórica)
+            $deviationPercent = (($calculation['average'] - $currentEnrollment) / $calculation['average']) * 100;
             $shouldOverride = $deviationPercent > $this->thresholdPercent;
 
             if ($shouldOverride) {
@@ -153,7 +187,11 @@ class HistoricalEnrollmentService
     }
 
     /**
-     * Verifica se uma turma é de 1º semestre obrigatória de graduação.
+     * Verifica se uma turma é de 1º semestre obrigatória de graduação do IME.
+     *
+     * No Replicado, turmas dos cursos do IME têm os dois últimos dígitos do codtur
+     * (sufixo da turma) >= 40. Turmas com sufixo < 40 pertencem a outras unidades
+     * e não devem ser alocadas no prédio do IME.
      */
     public function isFirstSemesterClass(SchoolClass $schoolClass): bool
     {
@@ -167,6 +205,12 @@ class HistoricalEnrollmentService
             return false;
         }
 
+        // Só processa turmas do IME (sufixo >= 40)
+        $codturSuffix = (int) substr($schoolClass->codtur, -2);
+        if ($codturSuffix < 40) {
+            return false;
+        }
+
         // Deve possuir courseinformation de 1º semestre obrigatório
         return $schoolClass->courseinformations()
             ->where('numsemidl', 1)
@@ -175,35 +219,88 @@ class HistoricalEnrollmentService
     }
 
     /**
-     * Busca matrículas históricas da disciplina em 1º semestres anteriores.
+     * Verifica se a turma possui obstur indicando que é uma turma especial
+     * e não deve ser comparada com a média histórica de turmas regulares.
+     */
+    public function hasSpecialObstur(SchoolClass $schoolClass): bool
+    {
+        // Como SchoolClass não armazena obstur localmente, buscamos no Replicado
+        try {
+            $query = "SELECT T.obstur FROM TURMAGR AS T
+                      WHERE T.coddis = :coddis
+                        AND T.codtur = :codtur
+                        AND T.statur IN ('A', 'C')
+                        AND T.verdis = (SELECT MAX(T2.verdis)
+                                        FROM TURMAGR AS T2
+                                        WHERE T2.coddis = :coddis
+                                          AND T2.codtur = T.codtur
+                                          AND T2.statur IN ('A', 'C'))";
+            $param = [
+                'coddis' => $schoolClass->coddis,
+                'codtur' => $schoolClass->codtur,
+            ];
+            $res = DB::fetchAll($query, $param);
+            if (!empty($res) && !empty($res[0]['obstur'])) {
+                $obsturLower = mb_strtolower($res[0]['obstur']);
+                foreach ($this->exclusionObsturKeywords as $keyword) {
+                    if (mb_strpos($obsturLower, mb_strtolower($keyword)) !== false) {
+                        Log::info('HistoricalEnrollmentService: skipping special class due to obstur', [
+                            'coddis' => $schoolClass->coddis,
+                            'codtur' => $schoolClass->codtur,
+                            'obstur' => $res[0]['obstur'],
+                            'matched_keyword' => $keyword,
+                        ]);
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            Log::warning('HistoricalEnrollmentService: failed to check obstur', [
+                'coddis' => $schoolClass->coddis,
+                'codtur' => $schoolClass->codtur,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return false;
+    }
+
+    /**
+     * Busca matrículas históricas da disciplina/turma em 1º semestres anteriores.
      *
+     * O filtro leva em conta o sufixo do codtur (últimos 2 dígitos), garantindo que
+     * apenas turmas com o mesmo número sejam comparadas ao longo dos anos.
+     * Turmas com obstur indicando exceção são excluídas do cálculo da média.
+     *
+     * @param string $coddis Código da disciplina
+     * @param string $codturSuffix Sufixo da turma (últimos 2 dígitos do codtur)
+     * @param int $currentYear Ano da turma atual
      * @return array<int, array{year: int, codtur: string, total_matriculados: int}>
      */
-    private function fetchHistoricalEnrollments(string $coddis, int $currentYear): array
+    private function fetchHistoricalEnrollments(string $coddis, string $codturSuffix, int $currentYear): array
     {
         $results = [];
         $yearsToLookBack = (int) config('alocacao.historical_lookback_years', 5);
 
         for ($offset = 1; $offset <= $yearsToLookBack; $offset++) {
             $year = $currentYear - $offset;
-            $codturPattern = $year . '1%';
+            $codtur = $year . '1' . $codturSuffix;
 
-            $query = "SELECT T.codtur,
-                             (T.nummtr + T.nummtrturcpl + T.nummtropt + T.nummtrecr + T.nummtroptlre) AS TOTALMATRICULADOS
+            $query = "SELECT T.codtur, T.obstur,
+                             (ISNULL(T.nummtr,0) + ISNULL(T.nummtrturcpl,0) + ISNULL(T.nummtropt,0) + ISNULL(T.nummtrecr,0) + ISNULL(T.nummtroptlre,0)) AS TOTALMATRICULADOS
                       FROM TURMAGR AS T
                       WHERE T.coddis = :coddis
-                        AND T.codtur LIKE :codtur
-                        AND T.statur = :statur
+                        AND T.codtur = :codtur
+                        AND T.statur IN ('A', 'C')
                         AND T.verdis = (SELECT MAX(T2.verdis)
                                         FROM TURMAGR AS T2
                                         WHERE T2.coddis = :coddis
                                           AND T2.codtur = T.codtur
-                                          AND T2.statur = :statur)";
+                                          AND T2.statur IN ('A', 'C'))";
 
             $param = [
                 'coddis' => $coddis,
-                'codtur' => $codturPattern,
-                'statur' => 'A',
+                'codtur' => $codtur,
             ];
 
             try {
@@ -211,6 +308,7 @@ class HistoricalEnrollmentService
             } catch (Exception $e) {
                 Log::error('HistoricalEnrollmentService: query failed', [
                     'coddis' => $coddis,
+                    'codtur' => $codtur,
                     'year' => $year,
                     'error' => $e->getMessage(),
                 ]);
@@ -218,6 +316,21 @@ class HistoricalEnrollmentService
             }
 
             foreach ($turmas as $turma) {
+                // Ignora turmas especiais no histórico
+                if (!empty($turma['obstur'])) {
+                    $obsturLower = mb_strtolower($turma['obstur']);
+                    $isSpecial = false;
+                    foreach ($this->exclusionObsturKeywords as $keyword) {
+                        if (mb_strpos($obsturLower, mb_strtolower($keyword)) !== false) {
+                            $isSpecial = true;
+                            break;
+                        }
+                    }
+                    if ($isSpecial) {
+                        continue;
+                    }
+                }
+
                 $total = (int) ($turma['TOTALMATRICULADOS'] ?? 0);
                 if ($total > 0) {
                     $results[] = [
