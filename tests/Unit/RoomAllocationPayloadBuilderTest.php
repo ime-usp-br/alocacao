@@ -358,4 +358,142 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertEquals($expectedId, $group['id']);
         $this->assertEquals('fusion', $group['type']);
     }
+
+    /** @test */
+    public function it_handles_all_null_enrollment()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'estmtr' => null,
+            'fusion_id' => $fusion->id,
+        ]);
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'estmtr' => null,
+            'fusion_id' => $fusion->id,
+        ]);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertTrue($group['has_null_enrollment']);
+        $this->assertEquals(0, $group['demand']);
+    }
+
+    /** @test */
+    public function it_handles_empty_school_term()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $this->assertEmpty($payload['groups']);
+        $this->assertEmpty($payload['timeslots']);
+        $this->assertCount(1, $payload['rooms']);
+    }
+
+    /** @test */
+    public function it_rejects_all_classes_when_filtered()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $room->id,
+            'externa' => true,
+        ]);
+        SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $room->id,
+            'coddis' => 'MAE0116',
+        ]);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $this->assertEmpty($payload['groups']);
+        $this->assertEmpty($payload['timeslots']);
+    }
+
+    /** @test */
+    public function it_handles_room_ids_empty_array()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+        ]);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, []);
+
+        $this->assertEmpty($payload['rooms']);
+        $this->assertCount(1, $payload['groups']);
+    }
+
+    /** @test */
+    public function it_handles_fusion_with_one_class_having_no_schedules()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $classA->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertCount(1, $group['timeslot_ids']);
+        $this->assertCount(1, $payload['timeslots']);
+    }
+
+    /** @test */
+    public function it_sorts_timeslots_lexicographically()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+        ]);
+
+        $s1 = ClassSchedule::factory()->qui()->afternoon()->create();
+        $s2 = ClassSchedule::factory()->seg()->morning()->create();
+        $s3 = ClassSchedule::factory()->ter()->morning()->create();
+        $class->classschedules()->attach([$s1->id, $s2->id, $s3->id]);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $timeslots = $payload['timeslots'];
+        $this->assertCount(3, $timeslots);
+
+        $labels = array_column($timeslots, 'label');
+        $sorted = $labels;
+        sort($sorted);
+        $this->assertEquals($sorted, $labels);
+
+        $this->assertEquals('qui_1400_1600', $labels[0]);
+        $this->assertEquals('seg_0800_1000', $labels[1]);
+        $this->assertEquals('ter_0800_1000', $labels[2]);
+    }
 }
