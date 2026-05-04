@@ -79,7 +79,7 @@ class AllocateFirstSemesters extends Command
 
             foreach ($classesToAllocate as $class) {
                 try {
-                    if ($historicalService->applyToSchoolClass($class, true)) {
+                    if ($historicalService->applyToSchoolClass($class, true, $this->option('dry-run'))) {
                         $recalculatedCount++;
                         $this->line("  [Recalculado] {$class->coddis} (T.{$class->codtur}) -> estmtr = {$class->estmtr}");
                     }
