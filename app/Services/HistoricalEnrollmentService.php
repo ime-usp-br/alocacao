@@ -22,12 +22,12 @@ class HistoricalEnrollmentService
     /**
      * Threshold percentual para sobrescrita (configurável via env).
      */
-    private float $thresholdPercent;
+    private float $thresholdPercent = 7.0;
 
     /**
      * Número mínimo de anos históricos necessários para confiabilidade.
      */
-    private int $minHistoricalYears;
+    private int $minHistoricalYears = 2;
 
     public function __construct()
     {
@@ -91,9 +91,10 @@ class HistoricalEnrollmentService
      *
      * @param SchoolClass $schoolClass
      * @param bool $force Forçar recálculo mesmo que já tenha sido aplicado
-     * @return bool True se foi sobrescrito
+     * @param bool $dryRun Quando true, calcula mas não persiste no banco
+     * @return bool True se foi sobrescrito (ou deveria ser, no dry-run)
      */
-    public function applyToSchoolClass(SchoolClass $schoolClass, bool $force = false): bool
+    public function applyToSchoolClass(SchoolClass $schoolClass, bool $force = false, bool $dryRun = false): bool
     {
         // Só aplica para turmas de Graduação no 1º semestre
         if (!$this->isFirstSemesterClass($schoolClass)) {
@@ -107,6 +108,11 @@ class HistoricalEnrollmentService
 
         $year = (int) substr($schoolClass->codtur, 0, 4);
         $calculation = $this->calculateHistoricalAverage($schoolClass->coddis, $year);
+
+        // Não aplica sem dados históricos suficientes
+        if ($calculation['samples'] < $this->minHistoricalYears) {
+            return false;
+        }
 
         // O valor atual vem de calcEstimadedEnrollment (inscritos), que roda antes deste serviço
         $currentEnrollment = $schoolClass->estmtr;
@@ -127,14 +133,17 @@ class HistoricalEnrollmentService
                     'years' => $calculation['years'],
                     'samples' => $calculation['samples'],
                 ];
-                $schoolClass->save();
 
-                Log::info('HistoricalEnrollmentService: applied historical average', [
-                    'coddis' => $schoolClass->coddis,
-                    'codtur' => $schoolClass->codtur,
-                    'old_estmtr' => $currentEnrollment,
-                    'new_estmtr' => $recommendedEnrollment,
-                ]);
+                if (!$dryRun) {
+                    $schoolClass->save();
+
+                    Log::info('HistoricalEnrollmentService: applied historical average', [
+                        'coddis' => $schoolClass->coddis,
+                        'codtur' => $schoolClass->codtur,
+                        'old_estmtr' => $currentEnrollment,
+                        'new_estmtr' => $recommendedEnrollment,
+                    ]);
+                }
 
                 return true;
             }
