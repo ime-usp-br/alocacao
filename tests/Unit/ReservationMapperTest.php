@@ -106,18 +106,17 @@ class ReservationMapperTest extends TestCase
 
         $payload = $this->mapper->mapSchoolClassToReservationPayload($this->mockSchoolClass);
 
-        $this->assertArrayHasKey('horario_inicio', $payload);
-        $this->assertArrayHasKey('horario_fim', $payload);
-        $this->assertArrayNotHasKey('day_times', $payload);
-        $this->assertEquals('8:00', $payload['horario_inicio']);
-        $this->assertEquals('9:59', $payload['horario_fim']); // 10:00 - 1 minute
+        $this->assertArrayNotHasKey('horario_inicio', $payload);
+        $this->assertArrayNotHasKey('horario_fim', $payload);
+        $this->assertArrayHasKey('day_times', $payload);
+        $this->assertEquals(['1' => ['start' => '8:00', 'end' => '9:59']], $payload['day_times']);
         $this->assertEquals('Aula - MAC0110 T.01', $payload['nome']);
         $this->assertEquals(123, $payload['sala_id']);
         $this->assertEquals(1, $payload['finalidade_id']); // Graduação
     }
 
     /** @test */
-    public function it_generates_traditional_payload_for_multiple_uniform_schedules()
+    public function it_generates_day_times_payload_for_multiple_uniform_schedules()
     {
         // Create multiple schedules with same times
         $schedule1 = $this->createMockSchedule('ter', '10:00:00', '12:00:00');
@@ -130,14 +129,13 @@ class ReservationMapperTest extends TestCase
 
         $payload = $this->mapper->mapSchoolClassToReservationPayload($this->mockSchoolClass);
 
-        $this->assertArrayHasKey('horario_inicio', $payload);
-        $this->assertArrayHasKey('horario_fim', $payload);
-        $this->assertArrayNotHasKey('day_times', $payload);
+        $this->assertArrayNotHasKey('horario_inicio', $payload);
+        $this->assertArrayNotHasKey('horario_fim', $payload);
+        $this->assertArrayHasKey('day_times', $payload);
         $this->assertArrayHasKey('repeat_days', $payload);
         $this->assertArrayHasKey('repeat_until', $payload);
         $this->assertEquals([2, 4], $payload['repeat_days']); // ter=2, qui=4
-        $this->assertEquals('10:0', $payload['horario_inicio']);
-        $this->assertEquals('12:0', $payload['horario_fim']);
+        $this->assertEquals(['2' => ['start' => '10:00', 'end' => '11:59'], '4' => ['start' => '10:00', 'end' => '11:59']], $payload['day_times']);
     }
 
     /** @test */
@@ -162,8 +160,8 @@ class ReservationMapperTest extends TestCase
 
         // Validate day_times structure
         $expectedDayTimes = [
-            '1' => ['start' => '8:0', 'end' => '9:59'], // seg=1
-            '3' => ['start' => '14:0', 'end' => '16:0'] // qua=3
+            '1' => ['start' => '8:00', 'end' => '9:59'], // seg=1
+            '3' => ['start' => '14:00', 'end' => '15:59'] // qua=3
         ];
 
         $this->assertEquals($expectedDayTimes, $payload['day_times']);
@@ -189,9 +187,9 @@ class ReservationMapperTest extends TestCase
         $this->assertCount(3, $payload['day_times']);
 
         // Verify each day has correct times
-        $this->assertEquals(['start' => '8:0', 'end' => '9:59'], $payload['day_times']['1']); // seg
-        $this->assertEquals(['start' => '10:0', 'end' => '12:0'], $payload['day_times']['2']); // ter
-        $this->assertEquals(['start' => '14:0', 'end' => '16:0'], $payload['day_times']['3']); // qua
+        $this->assertEquals(['start' => '8:00', 'end' => '9:59'], $payload['day_times']['1']); // seg
+        $this->assertEquals(['start' => '10:00', 'end' => '11:59'], $payload['day_times']['2']); // ter
+        $this->assertEquals(['start' => '14:00', 'end' => '15:59'], $payload['day_times']['3']); // qua
 
         $this->assertEquals([1, 2, 3], $payload['repeat_days']);
     }
@@ -199,14 +197,15 @@ class ReservationMapperTest extends TestCase
     /** @test */
     public function it_throws_exception_for_schoolclass_without_room()
     {
-        $this->mockSchoolClass->shouldReceive('getAttribute')
+        $mockSchoolClass = Mockery::mock(SchoolClass::class);
+        $mockSchoolClass->shouldReceive('getAttribute')
             ->with('room')
             ->andReturn(null);
 
         $this->expectException(Exception::class);
         $this->expectExceptionMessage('SchoolClass deve ter uma sala alocada para ser mapeada');
 
-        $this->mapper->mapSchoolClassToReservationPayload($this->mockSchoolClass);
+        $this->mapper->mapSchoolClassToReservationPayload($mockSchoolClass);
     }
 
     /** @test */
@@ -299,32 +298,17 @@ class ReservationMapperTest extends TestCase
         $payload = $this->mapper->mapSchoolClassToReservationPayload($this->mockSchoolClass);
         $this->assertEquals(1, $payload['finalidade_id']); // Graduação
 
-        // Test Pós Graduação
-        $mockPosGrad = clone $this->mockSchoolClass;
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('tiptur')
-            ->andReturn('Pós Graduação');
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('classschedules')
-            ->andReturn($schedules);
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('room')
-            ->andReturn($this->mockRoom);
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('schoolterm')
-            ->andReturn($this->mockSchoolTerm);
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('id')
-            ->andReturn(2);
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('coddis')
-            ->andReturn('MAC0110');
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('codtur')
-            ->andReturn('01');
-        $mockPosGrad->shouldReceive('getAttribute')
-            ->with('fusion')
-            ->andReturn(null);
+        // Test Pós Graduação with a fresh mock
+        $mockPosGrad = Mockery::mock(SchoolClass::class);
+        $mockPosGrad->shouldReceive('getAttribute')->with('id')->andReturn(2);
+        $mockPosGrad->shouldReceive('getAttribute')->with('coddis')->andReturn('MAC0110');
+        $mockPosGrad->shouldReceive('getAttribute')->with('codtur')->andReturn('01');
+        $mockPosGrad->shouldReceive('getAttribute')->with('tiptur')->andReturn('Pós Graduação');
+        $mockPosGrad->shouldReceive('getAttribute')->with('room')->andReturn($this->mockRoom);
+        $mockPosGrad->shouldReceive('getAttribute')->with('schoolterm')->andReturn($this->mockSchoolTerm);
+        $mockPosGrad->shouldReceive('getAttribute')->with('classschedules')->andReturn($schedules);
+        $mockPosGrad->shouldReceive('getAttribute')->with('fusion')->andReturn(null);
+        $mockPosGrad->shouldReceive('offsetExists')->with('tiptur')->andReturn(true);
 
         $payload = $this->mapper->mapSchoolClassToReservationPayload($mockPosGrad);
         $this->assertEquals(2, $payload['finalidade_id']); // Pós-Graduação

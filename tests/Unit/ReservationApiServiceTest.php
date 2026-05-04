@@ -717,8 +717,12 @@ class ReservationApiServiceTest extends TestCase
         $room = Mockery::mock(Room::class);
         $room->shouldReceive('getAttribute')->with('nome')->andReturn('B01');
 
+        $schoolTerm = Mockery::mock(SchoolTerm::class);
+        $schoolTerm->shouldReceive('getAttribute')->with('dtamaxres')->andReturn('31/12/2024');
+
         $schoolClass->shouldReceive('getAttribute')->with('id')->andReturn(1);
         $schoolClass->shouldReceive('getAttribute')->with('room')->andReturn($room);
+        $schoolClass->shouldReceive('getAttribute')->with('schoolterm')->andReturn($schoolTerm);
 
         // Mock multiple schedules
         $schedule1 = (object)['diasmnocp' => 'seg', 'horent' => '08:00:00', 'horsai' => '10:00:00'];
@@ -765,8 +769,12 @@ class ReservationApiServiceTest extends TestCase
         $room = Mockery::mock(Room::class);
         $room->shouldReceive('getAttribute')->with('nome')->andReturn('A132');
 
+        $schoolTerm = Mockery::mock(SchoolTerm::class);
+        $schoolTerm->shouldReceive('getAttribute')->with('dtamaxres')->andReturn('31/12/2027');
+
         $schoolClass->shouldReceive('getAttribute')->with('id')->andReturn(2);
         $schoolClass->shouldReceive('getAttribute')->with('room')->andReturn($room);
+        $schoolClass->shouldReceive('getAttribute')->with('schoolterm')->andReturn($schoolTerm);
 
         // Mock three different schedules
         $schedule1 = (object)['diasmnocp' => 'seg', 'horent' => '08:00:00', 'horsai' => '10:00:00'];
@@ -788,10 +796,9 @@ class ReservationApiServiceTest extends TestCase
                 return $callback();
             });
 
-        // Mock API calls for each schedule
+        // Mock API calls for conflict checking
         $this->salasApiClient
             ->shouldReceive('get')
-            ->times(3) // Should check each schedule
             ->with('/api/v1/reservas', Mockery::any())
             ->andReturn(['data' => []]);
 
