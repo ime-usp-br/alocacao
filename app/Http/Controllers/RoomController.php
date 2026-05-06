@@ -14,7 +14,12 @@ use App\Jobs\ProcessReservation;
 use romanzipp\QueueMonitor\Models\Monitor;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Session;
+use App\Jobs\ProcessRoomDistribution;
 use App\Models\Requisition;
 use App\Models\Reservation;
 use App\Models\Room;
@@ -235,111 +240,167 @@ class RoomController extends Controller
         }
 
         $validated = $request->validated();
-        
-        $salas_disponiveis = $validated["rooms_id"];
+        $schoolterm = SchoolTerm::getLatest();
+
+        // Prevent double-dispatch for the same school term
+        $existing = Cache::get("allocation:{$schoolterm->id}");
+        if ($existing && !in_array($existing['status'] ?? '', ['completed', 'error', 'timeout'])) {
+            Session::put("alert-warning", "Já existe uma distribuição em andamento para este semestre.");
+            return back();
+        }
+
+        ProcessRoomDistribution::dispatch($schoolterm->id, $validated['rooms_id']);
+
+        Session::put("alert-info", "A distribuição de salas foi iniciada. Acompanhe o progresso na barra acima.");
+        return back();
+    }
+
+    public function stopDistribution(Request $request)
+    {
+        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+            abort(403);
+        }
 
         $schoolterm = SchoolTerm::getLatest();
 
-        $semestres = $schoolterm->period == "1° Semestre" ? [1] : [2];// Se quiser que em outros semestres os cursos fiquem na mesma sala add aqui 
-
-        foreach($semestres as $semestre){
-            foreach(CourseInformation::$codtur_by_course as $sufixo_codtur=>$course){
-                $turmas = SchoolClass::whereBelongsTo($schoolterm)->whereHas("courseinformations", function($query)use($course, $semestre){
-                                            $query->where("numsemidl",$semestre)->where("tipobg","O")->where("nomcur", $course["nomcur"])->where("perhab", $course["perhab"]);
-                                        })->where("codtur","like","%".$sufixo_codtur)->where("externa", false)->get();
-                if($turmas->count() > 1){
-                    $ps = Priority::whereHas("schoolclass",function($query)use($turmas){
-                                        $query->whereIn("id",$turmas->pluck("id")->toArray());
-                                    })->with("room")->get();
-        
-                    $salas = [];
-                    foreach($ps->groupBy("room.id") as $sala_id=>$p){
-                        $salas[$p->sum("priority")] = Room::find($sala_id);
-                    }
-                    krsort($salas);
-                    foreach(Room::whereNotIn("id", array_column($salas,"id"))->get()->sortby("assentos") as $room){
-                        array_push($salas, $room);
-                    }
-
-                    $alocado = false;
-                    foreach($salas as $room){
-                        if(!$alocado){
-                            if(in_array($room->id, $salas_disponiveis)){
-                                $conflito = false;
-                                foreach($turmas as $turma){
-                                    if(!$room->isCompatible($turma)){
-                                        $conflito = true;
-                                    }
-                                }
-                                if(!$conflito){
-                                    foreach($turmas as $turma){
-                                        $room->schoolclasses()->save($turma);
-                                    }
-                                    $alocado = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if (! $schoolterm) {
+            Session::put("alert-warning", "Não há semestre letivo ativo.");
+            return back();
         }
 
-        $prioridades = Priority::whereHas("schoolclass", function($query) use($schoolterm) {$query->whereBelongsTo($schoolterm);})
-                                ->get()->sortByDesc("priority");
+        $cached = Cache::get("allocation:{$schoolterm->id}");
 
-        foreach($prioridades as $prioridade){
-            $t1 = $prioridade->schoolclass;
-            $room = $prioridade->room;
-            if(in_array($room->id, $salas_disponiveis)){
-                if(!$t1->room()->exists() and $t1->coddis!="MAE0116"){
-                    if($t1->fusion()->exists()){
-                        if($t1->fusion->master->id == $t1->id){
-                            if($room->isCompatible($t1)){
-                                $room->schoolclasses()->save($t1);
-                            }                        
-                        }
-                    }elseif($room->isCompatible($t1)){
-                        $room->schoolclasses()->save($t1);
-                    }
-                }
-            }
+        if (! $cached || empty($cached['job_id'])) {
+            Session::put("alert-warning", "Não há distribuição em andamento para cancelar.");
+            return back();
         }
 
-        $turmas = SchoolClass::whereBelongsTo($schoolterm)
-                                ->where("tiptur","Pós Graduação")
-                                ->whereDoesntHave("room")->get();
-        foreach($turmas as $t1){
-            foreach(Room::whereIn("id", $salas_disponiveis)->get()->shuffle() as $sala){
-                if(!$t1->room()->exists() and !$t1->fusion()->exists()){
-                    if($sala->isCompatible($t1)){
-                        $sala->schoolclasses()->save($t1);
-                    }
-                }
-            }
+        if (in_array($cached['status'], ['completed', 'error', 'timeout'])) {
+            Session::put("alert-info", "A distribuição já foi finalizada.");
+            return back();
         }
 
-        $turmas = SchoolClass::whereBelongsTo($schoolterm)
-                                ->where("tiptur","Graduação")
-                                ->whereNotNull("estmtr")
-                                ->whereDoesntHave("room")
-                                ->get()->sortBy("estmtr");
-        foreach($turmas as $t1){
-            foreach(Room::whereIn("id", $salas_disponiveis)->get()->sortby("assentos") as $sala){
-                if(!$t1->room()->exists() and $t1->coddis!="MAE0116"){
-                    if($t1->fusion()->exists()){
-                        if($t1->fusion->master->id == $t1->id){
-                            if($sala->isCompatible($t1)){
-                                $sala->schoolclasses()->save($t1);
-                            }                        
-                        }
-                    }elseif($sala->isCompatible($t1)){
-                        $sala->schoolclasses()->save($t1);
-                    }
-                }
+        $solverUrl = rtrim(config('alocacao.solver.url'), '/');
+        $apiToken = config('alocacao.solver.api_token');
+        $jobId = $cached['job_id'];
+
+        try {
+            $http = Http::withHeaders([
+                    'X-Webhook-Token' => $apiToken,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(30);
+
+            if (! config('alocacao.solver.verify_ssl', true)) {
+                $http = $http->withoutVerifying();
             }
+
+            $response = $http->post("{$solverUrl}/api/v1/jobs/{$jobId}/stop");
+
+            if ($response->successful()) {
+                $cached['status'] = 'stopping';
+                $cached['message'] = 'Solicitação de cancelamento enviada ao solver';
+                Cache::put("allocation:{$schoolterm->id}", $cached, now()->addHours(4));
+
+                Session::put("alert-info", "Solicitação de cancelamento enviada. Aguardando resultados parciais.");
+            } else {
+                Session::put("alert-danger", "Não foi possível cancelar a distribuição. Tente novamente.");
+            }
+        } catch (\Exception $e) {
+            Log::error('RoomController@stopDistribution: failed to contact solver', [
+                'job_id' => $jobId,
+                'error' => $e->getMessage(),
+            ]);
+            Session::put("alert-danger", "Erro de comunicação com o solver. Tente novamente.");
         }
 
-        Session::put("alert-info", "As turmas foram distribuidas nas salas com sucesso.");
+        return back();
+    }
+
+    public function fallbackDistribution(Request $request)
+    {
+        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+            abort(403);
+        }
+
+        $schoolterm = SchoolTerm::getLatest();
+
+        if (! $schoolterm) {
+            Session::put("alert-warning", "Não há semestre letivo ativo.");
+            return back();
+        }
+
+        $cached = Cache::get("allocation:{$schoolterm->id}");
+
+        if (! $cached || empty($cached['job_id'])) {
+            Session::put("alert-warning", "Não há distribuição para resgatar.");
+            return back();
+        }
+
+        if (in_array($cached['status'], ['completed'])) {
+            Session::put("alert-info", "A distribuição já foi concluída.");
+            return back();
+        }
+
+        $solverUrl = rtrim(config('alocacao.solver.url'), '/');
+        $apiToken = config('alocacao.solver.api_token');
+        $jobId = $cached['job_id'];
+
+        try {
+            $http = Http::withHeaders([
+                    'X-Webhook-Token' => $apiToken,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(config('alocacao.solver.timeout', 60));
+
+            if (! config('alocacao.solver.verify_ssl', true)) {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->get("{$solverUrl}/api/v1/jobs/{$jobId}/result");
+
+            if (! $response->successful()) {
+                Session::put("alert-danger", "O solver não possui resultado disponível para este job.");
+                return back();
+            }
+
+            $data = $response->json();
+            $assignments = $data['assignments'] ?? [];
+            $unassignedGroups = $data['unassigned_groups'] ?? [];
+
+            DB::transaction(function () use ($assignments, $unassignedGroups) {
+                foreach ($assignments as $assignment) {
+                    SchoolClass::where('id', $assignment['group_id'])->update(['room_id' => $assignment['room_id']]);
+                }
+                if (! empty($unassignedGroups)) {
+                    SchoolClass::whereIn('id', $unassignedGroups)->update(['room_id' => null]);
+                }
+            });
+
+            $suggestions = $data['suggestions'] ?? [];
+            if (! empty($suggestions)) {
+                Cache::put("allocation_suggestions:{$schoolterm->id}", $suggestions, now()->addDays(7));
+            }
+
+            Cache::put("allocation:{$schoolterm->id}", [
+                'job_id' => $jobId,
+                'status' => 'completed',
+                'progress' => 100,
+                'message' => 'Distribuição concluída (via resgate)',
+                'finished_at' => now()->toIso8601String(),
+                'assignments_count' => count($assignments),
+                'unassigned_count' => count($unassignedGroups),
+            ], now()->addHours(4));
+
+            Session::put("alert-info", "Resultado resgatado e aplicado com sucesso.");
+        } catch (\Exception $e) {
+            Log::error('RoomController@fallbackDistribution: failed to contact solver', [
+                'job_id' => $jobId,
+                'error' => $e->getMessage(),
+            ]);
+            Session::put("alert-danger", "Erro de comunicação com o solver ao tentar resgatar o resultado.");
+        }
+
         return back();
     }
 

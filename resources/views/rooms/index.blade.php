@@ -70,6 +70,34 @@
                                     Reservar Salas no Urano
                                 </button>
                             </form>
+
+                            <form id="stopDistributionForm" style="display: inline;" action="{{ route('rooms.distribution.stop') }}" method="POST"
+                            enctype="multipart/form-data"
+                            >
+                                @csrf
+                                <button  class="btn btn-outline-danger"
+                                    id="btn-stop-distribution"
+                                    type="submit"
+                                    style="display: none;"
+                                    onclick="return confirm('Você tem certeza? O solver retornará a melhor solução parcial encontrada até o momento.')" 
+                                >
+                                    Cancelar Distribuição
+                                </button>
+                            </form>
+
+                            <form id="fallbackDistributionForm" style="display: inline;" action="{{ route('rooms.distribution.fallback') }}" method="POST"
+                            enctype="multipart/form-data"
+                            >
+                                @csrf
+                                <button  class="btn btn-outline-warning"
+                                    id="btn-fallback-distribution"
+                                    type="submit"
+                                    style="display: none;"
+                                    onclick="return confirm('Tentar resgatar manualmente o resultado do solver? Use apenas se o webhook falhou.')" 
+                                >
+                                    Verificar Resultado Manualmente
+                                </button>
+                            </form>
                         </div>
                     <br>
 
@@ -284,6 +312,83 @@ $( function() {
         });
     }        
     setTimeout( progress2, 50 );
+
+var trackingJob = false;
+    function progressDistribution() {
+        $.ajax({
+            url: window.location.origin+'/monitor/getDistributionProcess',
+            dataType: 'json',
+            success: function success(json){
+                if(json && 'progress' in json){
+                    var isFailed = json['failed'] || (json['data'] && JSON.parse(json['data'])['status'] === 'error');
+                    var isCompleted = json['status'] === 'completed';
+
+                    if(!isFailed && !isCompleted){
+                        trackingJob = true; // Avisa o JS que estamos assistindo a um job ativo
+                        
+                        document.getElementById("btn-stop-distribution").style.display = 'inline-block';
+                        document.getElementById("btn-fallback-distribution").style.display = 'inline-block';
+                        document.getElementById("btn-reservation").disabled = true;
+                        document.getElementById("btn-distributes").disabled = true;
+                        document.getElementById("btn-empty").disabled = true;
+
+                        if(document.getElementById('progressbar')){
+                            $( "#progressbar" ).progressbar( "value", json['progress'] );
+                        }else{
+                            $('#progressbar-div').append("<div id='progressbar'><div class='progress-label'></div></div>");
+                            var progressbar = $( "#progressbar" ),
+                            progressLabel = $( ".progress-label" );
+                            progressbar.progressbar({
+                                value: false,
+                                change: function() {
+                                    progressLabel.text( progressbar.progressbar( "value" ) + "%" );
+                                }
+                            });
+                        }
+                    }else if(isFailed){
+                        if (trackingJob) {
+                            document.getElementById("btn-reservation").disabled = false;
+                            document.getElementById("btn-distributes").disabled = false;
+                            document.getElementById("btn-empty").disabled = false;
+                            document.getElementById("btn-stop-distribution").style.display = 'none';
+                            document.getElementById("btn-fallback-distribution").style.display = 'inline-block';
+                            $( "#progressbar" ).remove();
+                            $('#flash-message').empty();
+                            $('#flash-message').append("<p id='error-message' class='alert alert-danger'>"+
+                                (json['message'] || 'Não foi possível realizar a distribuição. Falha crítica.') + "</p>");
+                            
+                            setTimeout(function() { window.location.reload(); }, 2500);
+                        }
+                        return; // O RETURN É CRÍTICO! Interrompe o polling e o loop.
+                    }else if(isCompleted){
+                        if (trackingJob) {
+                            document.getElementById("btn-reservation").disabled = false;
+                            document.getElementById("btn-distributes").disabled = false;
+                            document.getElementById("btn-empty").disabled = false;
+                            document.getElementById("btn-stop-distribution").style.display = 'none';
+                            document.getElementById("btn-fallback-distribution").style.display = 'none';
+                            $( "#progressbar" ).remove();
+                            $('#flash-message').empty();
+                            $('#flash-message').append("<p id='success-message' class='alert alert-success'>As turmas foram distribuídas nas salas com sucesso.</p>");
+                            
+                            setTimeout(function() { window.location.reload(); }, 2500);
+                        }
+                        return; // O RETURN É CRÍTICO! Interrompe o polling e o loop.
+                    }
+                }else{
+                    document.getElementById("btn-stop-distribution").style.display = 'none';
+                    document.getElementById("btn-fallback-distribution").style.display = 'none';
+                    trackingJob = false;
+                }
+                
+                setTimeout( progressDistribution, 1000);
+            },
+            error: function() {
+                setTimeout( progressDistribution, 3000);
+            }
+        });
+    }
+    setTimeout( progressDistribution, 50 );
 });
 </script>
 @endsection

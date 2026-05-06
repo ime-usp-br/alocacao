@@ -36,5 +36,18 @@ return [
         'wasted_seats_weight' => (float) env('ROOM_ALLOCATION_WASTED_SEATS_WEIGHT', 1.0),
         'unassigned_penalty' => (float) env('ROOM_ALLOCATION_UNASSIGNED_PENALTY', 1000.0),
         'priority_weight' => (float) env('ROOM_ALLOCATION_PRIORITY_WEIGHT', 0.0),
+        'time_limit_seconds' => (int) env('ROOM_ALLOCATION_TIME_LIMIT', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Configurações do microserviço Python de otimização (alocacao-solver).
+    |--------------------------------------------------------------------------
+    */
+    'solver' => [
+        'url' => env('ALOCACAO_SOLVER_URL'),
+        'api_token' => env('ALOCACAO_SOLVER_API_TOKEN'),
+        'timeout' => (int) env('ALOCACAO_SOLVER_TIMEOUT', 60),
+        'verify_ssl' => (bool) env('ALOCACAO_SOLVER_VERIFY_SSL', true),
     ],
 ];
