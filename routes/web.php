@@ -57,6 +57,8 @@ Route::get('/rooms/downloadReport', [RoomController::class, 'downloadReport'])->
 Route::patch('/rooms/{room}/allocate', [RoomController::class, 'allocate'])->name('rooms.allocate');
 Route::get('/rooms/compatible', [RoomController::class, 'compatible'])->name('rooms.compatible');
 Route::patch('/rooms/distributes', [RoomController::class, 'distributes'])->name('rooms.distributes');
+Route::post('/rooms/distribution/stop', [RoomController::class, 'stopDistribution'])->name('rooms.distribution.stop');
+Route::post('/rooms/distribution/fallback', [RoomController::class, 'fallbackDistribution'])->name('rooms.distribution.fallback');
 Route::get('/rooms/dissociate/{schoolclass}', [RoomController::class, 'dissociate'])->name('rooms.dissociate');
 Route::resource('rooms', RoomController::class);
 
@@ -66,6 +68,7 @@ Route::resource('fusions', FusionController::class);
 Route::get('/monitor/getImportProcess', [MonitorController::class, 'getImportProcess']);
 Route::get('/monitor/getReportProcess', [MonitorController::class, 'getReportProcess']);
 Route::get('/monitor/getReservationProcess', [MonitorController::class, 'getReservationProcess']);
+Route::get('/monitor/getDistributionProcess', [MonitorController::class, 'getDistributionProcess']);
 
 Route::get('/courseschedules/department', [CourseScheduleController::class, 'showByDepartment'])->name('courseschedules.showByDepartment');
 Route::get('/courseschedules/pos', [CourseScheduleController::class, 'showPos'])->name('courseschedules.showPos');
