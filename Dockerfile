@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y \
     && SYBASE=/usr docker-php-ext-install pdo_dblib \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install gosu for running commands as a different user
+RUN curl -o /usr/local/bin/gosu -sSL "https://github.com/tianon/gosu/releases/download/1.17/gosu-$(dpkg --print-architecture)" \
+    && chmod +x /usr/local/bin/gosu
+
 # Get Composer 2 (latest compatible with PHP 7.4)
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

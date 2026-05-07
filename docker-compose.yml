@@ -60,22 +60,26 @@ services:
     networks:
       - alocacao
 
-  # Uncomment if you need queue workers via supervisor inside Docker
-  # worker:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: alocacao-worker
-  #   restart: unless-stopped
-  #   working_dir: /var/www
-  #   volumes:
-  #     - .:/var/www
-  #   command: sh -c "php artisan queue:work --tries=3 --sleep=3 --max-time=3600"
-  #   networks:
-  #     - alocacao
-  #   depends_on:
-  #     - mysql
-  #     - redis
+  # Queue worker — runs as www-data to avoid permission conflicts with Laravel storage/cache
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        user: alocacao
+        uid: 1000
+    container_name: alocacao-worker
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    command: sh -c "gosu www-data php artisan queue:work --tries=3 --sleep=3 --max-time=3600"
+    networks:
+      - alocacao
+    depends_on:
+      - mysql
+      - redis
 
 networks:
   alocacao:

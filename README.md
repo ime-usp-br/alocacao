@@ -58,9 +58,14 @@ Comandos úteis
     # Acessar o container da aplicação
     docker compose exec app bash
 
-    # Rodar comandos artisan
-    docker compose exec app php artisan migrate
-    docker compose exec app php artisan queue:work --tries=3
+    # Rodar comandos artisan (sempre como www-data para evitar Permission denied)
+    docker compose exec -u www-data app php artisan migrate
+    # NUNCA rode queue:work sem -u www-data — isso cria arquivos de cache como root
+    # O worker agora é um serviço separado no docker-compose.yml
+
+    # Ou use o script utilitário incluído no projeto:
+    ./docker/exec-as-www-data.sh php artisan cache:clear
+    ./docker/exec-as-www-data.sh php artisan migrate
 
     # Parar tudo
     docker compose down
@@ -145,6 +150,49 @@ Indique ao supervisor que há um novo arquivo de configuração
 Instale os pacotes LaTeX para gerar os relatórios
 
     sudo apt install texlive texlive-latex-extra texlive-lang-portuguese
+
+## Troubleshooting Docker
+
+### Permission denied em `storage/framework/cache`
+
+Se o Laravel retornar erros como:
+
+```
+file_put_contents(/var/www/storage/framework/cache/data/...): failed to open stream: Permission denied
+```
+
+**Causa mais comum:** o **queue worker** (`php artisan queue:work`) foi iniciado como `root` (via `docker exec` sem `-u www-data` ou via `docker compose exec` sem `-u`). Quando o worker processa jobs que escrevem no cache, cria arquivos como `root`. Depois, o php-fpm (que roda como `www-data`) não consegue sobrescrever esses arquivos quando os webhooks do solver chegam.
+
+Outra causa: qualquer comando `docker exec` ou `docker compose exec` rodado sem `-u www-data` que toque no cache/storage.
+
+**Solução definitiva já aplicada:**
+1. O `entrypoint.sh` agora cria diretórios, ajusta permissões **antes** de rodar qualquer comando e executa todos os comandos `artisan` como `www-data` (via `gosu`).
+2. O Dockerfile inclui `gosu` para garantir que comandos internos rodem com o usuário correto.
+3. Novos arquivos de cache são criados como `www-data`, evitando conflitos com o php-fpm.
+
+> **Nota:** se quiser usar Redis para cache no ambiente local, basta alterar `CACHE_DRIVER=file` para `CACHE_DRIVER=redis` no `.env`. O `docker-compose.yml` já sobe um container Redis pronto para uso, mas isso é opcional.
+
+**Se o problema persistir** (por exemplo, após rodar comandos manualmente como root):
+
+```bash
+# 1. Identifique e mate qualquer queue worker rodando como root
+docker exec alocacao-app sh -c "for pid in /proc/[0-9]*/cmdline; do if grep -q 'queue:work' \$pid 2>/dev/null; then kill \$(echo \$pid | cut -d/ -f3); fi; done"
+
+# 2. Limpe o cache e corrija permissões (como root, pois os arquivos são root)
+docker exec alocacao-app sh -c "rm -rf /var/www/storage/framework/cache/data/*"
+docker exec alocacao-app chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+
+# 3. Reinicie o worker como www-data (agora o docker-compose.yml já tem o serviço worker)
+docker compose up -d worker
+```
+
+**Regra de ouro:** sempre execute comandos artisan dentro do container como `www-data`:
+
+```bash
+docker compose exec -u www-data app php artisan <comando>
+# ou
+./docker/exec-as-www-data.sh php artisan <comando>
+```
 
 ## Configuração da API Salas
 
