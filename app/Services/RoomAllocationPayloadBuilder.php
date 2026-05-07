@@ -120,6 +120,37 @@ class RoomAllocationPayloadBuilder
     }
 
     /**
+     * Resolve se o grupo é composto por calouros do IME e retorna
+     * os dados do cohort, se aplicável.
+     *
+     * @param array $classes
+     * @param array $validSuffixes
+     * @return array|null ['suffix' => string, 'semester' => string] ou null
+     */
+    private function resolveFreshmenCohort(array $classes, array $validSuffixes): ?array
+    {
+        foreach ($classes as $class) {
+            if ($class->tiptur !== 'Graduação') {
+                continue;
+            }
+
+            $suffix = substr($class->codtur, -2);
+
+            if (! in_array($suffix, $validSuffixes, true)) {
+                continue;
+            }
+
+            foreach ($class->courseinformations as $ci) {
+                if ($ci->tipobg === 'O' && in_array($ci->numsemidl, ['1', '2'], true)) {
+                    return ['suffix' => $suffix, 'semester' => $ci->numsemidl];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Constroi o descriptor de um grupo (single ou fusion).
      *
      * @param array $classes
@@ -152,22 +183,9 @@ class RoomAllocationPayloadBuilder
 
         $groupId = $fusion && $fusion->master_id ? $fusion->master_id : min($classIds);
 
-        $sameRoomCohort = null;
-
-        if ($tiptur === 'Graduação') {
-            foreach ($classes as $class) {
-                $suffix = substr($class->codtur, -2);
-
-                if (in_array($suffix, $validSuffixes, true)) {
-                    foreach ($class->courseinformations as $ci) {
-                        if ($ci->tipobg === 'O' && in_array($ci->numsemidl, ['1', '2'], true)) {
-                            $sameRoomCohort = "cohort_{$suffix}_sem_{$ci->numsemidl}";
-                            break 2;
-                        }
-                    }
-                }
-            }
-        }
+        $cohortData = $this->resolveFreshmenCohort($classes, $validSuffixes);
+        $isFreshmen = $cohortData !== null;
+        $sameRoomCohort = $isFreshmen ? "cohort_{$cohortData['suffix']}_sem_{$cohortData['semester']}" : null;
 
         return [
             'id' => $groupId,
@@ -182,6 +200,7 @@ class RoomAllocationPayloadBuilder
             'timeslot_labels' => $timeslotLabels,
             'preassigned_room_id' => null,
             'same_room_cohort' => $sameRoomCohort,
+            'is_freshmen' => $isFreshmen,
         ];
     }
 
