@@ -313,7 +313,7 @@ $( function() {
     }        
     setTimeout( progress2, 50 );
 
-var trackingJob = false;
+    var trackingJob = false;
     function progressDistribution() {
         $.ajax({
             url: window.location.origin+'/monitor/getDistributionProcess',
@@ -324,8 +324,8 @@ var trackingJob = false;
                     var isCompleted = json['status'] === 'completed';
 
                     if(!isFailed && !isCompleted){
-                        trackingJob = true; // Avisa o JS que estamos assistindo a um job ativo
-                        
+                        trackingJob = true;
+
                         document.getElementById("btn-stop-distribution").style.display = 'inline-block';
                         document.getElementById("btn-fallback-distribution").style.display = 'inline-block';
                         document.getElementById("btn-reservation").disabled = true;
@@ -356,10 +356,12 @@ var trackingJob = false;
                             $('#flash-message').empty();
                             $('#flash-message').append("<p id='error-message' class='alert alert-danger'>"+
                                 (json['message'] || 'Não foi possível realizar a distribuição. Falha crítica.') + "</p>");
-                            
+
                             setTimeout(function() { window.location.reload(); }, 2500);
                         }
-                        return; // O RETURN É CRÍTICO! Interrompe o polling e o loop.
+
+                        trackingJob = false;
+                        return;
                     }else if(isCompleted){
                         if (trackingJob) {
                             document.getElementById("btn-reservation").disabled = false;
@@ -370,20 +372,22 @@ var trackingJob = false;
                             $( "#progressbar" ).remove();
                             $('#flash-message').empty();
                             $('#flash-message').append("<p id='success-message' class='alert alert-success'>As turmas foram distribuídas nas salas com sucesso.</p>");
-                            
+
                             setTimeout(function() { window.location.reload(); }, 2500);
                         }
-                        return; // O RETURN É CRÍTICO! Interrompe o polling e o loop.
+
+                        trackingJob = false;
+                        return;
                     }
                 }else{
                     document.getElementById("btn-stop-distribution").style.display = 'none';
                     document.getElementById("btn-fallback-distribution").style.display = 'none';
                     trackingJob = false;
                 }
-                
+
                 setTimeout( progressDistribution, 1000);
             },
-            error: function() {
+            error: function(xhr, status, err){
                 setTimeout( progressDistribution, 3000);
             }
         });
