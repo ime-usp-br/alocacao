@@ -33,6 +33,9 @@ return [
     'room_allocation' => [
         'strict_capacity' => (bool) env('ROOM_ALLOCATION_STRICT_CAPACITY', true),
         'block_b_restriction_for_pos' => (bool) env('ROOM_ALLOCATION_BLOCK_B_POS', true),
+        'block_a_restriction_for_freshmen' => (bool) env('ROOM_ALLOCATION_BLOCK_A_FRESHMEN', true),
+        'undergrad_in_block_a_penalty' => (float) env('ROOM_ALLOCATION_UNDERGRAD_BLOCK_A_PENALTY', 500.0),
+        'pos_in_block_b_penalty' => (float) env('ROOM_ALLOCATION_POS_BLOCK_B_PENALTY', 500.0),
         'wasted_seats_weight' => (float) env('ROOM_ALLOCATION_WASTED_SEATS_WEIGHT', 1.0),
         'unassigned_penalty' => (float) env('ROOM_ALLOCATION_UNASSIGNED_PENALTY', 1000.0),
         'priority_weight' => (float) env('ROOM_ALLOCATION_PRIORITY_WEIGHT', 0.0),
