@@ -31,7 +31,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'room_allocation' => [
-        'strict_capacity' => (bool) env('ROOM_ALLOCATION_STRICT_CAPACITY', false),
+        'strict_capacity' => (bool) env('ROOM_ALLOCATION_STRICT_CAPACITY', true),
         'block_b_restriction_for_pos' => (bool) env('ROOM_ALLOCATION_BLOCK_B_POS', true),
         'wasted_seats_weight' => (float) env('ROOM_ALLOCATION_WASTED_SEATS_WEIGHT', 1.0),
         'unassigned_penalty' => (float) env('ROOM_ALLOCATION_UNASSIGNED_PENALTY', 1000.0),

@@ -143,19 +143,9 @@ class RoomAllocationPayloadBuilder
         $validEstmtrs = array_filter($estmtrs, fn ($v) => $v !== null);
         $demand = array_sum($validEstmtrs);
 
-        $timeslotLabels = [];
-        foreach ($classes as $class) {
-            foreach ($class->classschedules as $schedule) {
-                $label = $this->timeslotToLabel(
-                    $schedule->diasmnocp,
-                    $schedule->horent,
-                    $schedule->horsai
-                );
-                $timeslotLabels[$label] = true;
-            }
-        }
-        $timeslotLabels = array_keys($timeslotLabels);
-        sort($timeslotLabels);
+        $timeslotLabels = $fusion
+            ? $this->buildMergedTimeslotLabels($classes)
+            : $this->buildSimpleTimeslotLabels($classes);
 
         $groupId = $fusion && $fusion->master_id ? $fusion->master_id : min($classIds);
 
@@ -220,6 +210,91 @@ class RoomAllocationPayloadBuilder
         $startClean = str_replace(':', '', $start);
         $endClean = str_replace(':', '', $end);
         return "{$day}_{$startClean}_{$endClean}";
+    }
+
+    /**
+     * Coleta labels de horario sem merge (usado para turmas solo).
+     *
+     * @param array $classes
+     * @return array
+     */
+    private function buildSimpleTimeslotLabels(array $classes): array
+    {
+        $timeslotLabels = [];
+        foreach ($classes as $class) {
+            foreach ($class->classschedules as $schedule) {
+                $label = $this->timeslotToLabel(
+                    $schedule->diasmnocp,
+                    $schedule->horent,
+                    $schedule->horsai
+                );
+                $timeslotLabels[$label] = true;
+            }
+        }
+        $timeslotLabels = array_keys($timeslotLabels);
+        sort($timeslotLabels);
+
+        return $timeslotLabels;
+    }
+
+    /**
+     * Coleta e mescla labels de horario para fusoes.
+     *
+     * Agrupa por dia da semana, ordena por inicio e mescla intervalos
+     * que se sobrepõem ou sao contiguos.
+     *
+     * @param array $classes
+     * @return array
+     */
+    private function buildMergedTimeslotLabels(array $classes): array
+    {
+        $byDay = [];
+        foreach ($classes as $class) {
+            foreach ($class->classschedules as $schedule) {
+                $day = $schedule->diasmnocp;
+                $start = (int) str_replace(':', '', $schedule->horent);
+                $end = (int) str_replace(':', '', $schedule->horsai);
+
+                $byDay[$day][] = [
+                    'start' => $start,
+                    'end' => $end,
+                    'labelStart' => str_replace(':', '', $schedule->horent),
+                    'labelEnd' => str_replace(':', '', $schedule->horsai),
+                ];
+            }
+        }
+
+        $timeslotLabels = [];
+        foreach ($byDay as $day => $intervals) {
+            usort($intervals, fn ($a, $b) => $a['start'] <=> $b['start']);
+
+            $merged = [];
+            foreach ($intervals as $interval) {
+                if (empty($merged)) {
+                    $merged[] = $interval;
+                    continue;
+                }
+
+                $last = &$merged[count($merged) - 1];
+                if ($interval['start'] <= $last['end']) {
+                    if ($interval['end'] > $last['end']) {
+                        $last['end'] = $interval['end'];
+                        $last['labelEnd'] = $interval['labelEnd'];
+                    }
+                } else {
+                    $merged[] = $interval;
+                }
+            }
+
+            foreach ($merged as $m) {
+                $timeslotLabels["{$day}_{$m['labelStart']}_{$m['labelEnd']}"] = true;
+            }
+        }
+
+        $timeslotLabels = array_keys($timeslotLabels);
+        sort($timeslotLabels);
+
+        return $timeslotLabels;
     }
 
     /**

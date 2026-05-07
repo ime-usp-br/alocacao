@@ -467,6 +467,105 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     }
 
     /** @test */
+    public function it_merges_overlapping_fusion_schedules_on_same_day()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+
+        $sQuaA = ClassSchedule::factory()->qua()->state(['horent' => '14:00', 'horsai' => '15:40'])->create();
+        $sSegA = ClassSchedule::factory()->seg()->state(['horent' => '16:00', 'horsai' => '17:40'])->create();
+        $sQuaB = ClassSchedule::factory()->qua()->state(['horent' => '14:00', 'horsai' => '16:00'])->create();
+        $sSegB = ClassSchedule::factory()->seg()->state(['horent' => '16:00', 'horsai' => '18:00'])->create();
+
+        $classA->classschedules()->attach([$sQuaA->id, $sSegA->id]);
+        $classB->classschedules()->attach([$sQuaB->id, $sSegB->id]);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals('fusion', $group['type']);
+        $this->assertCount(2, $group['timeslot_ids']);
+
+        $labels = array_column($payload['timeslots'], 'label');
+        $this->assertContains('qua_1400_1600', $labels);
+        $this->assertContains('seg_1600_1800', $labels);
+    }
+
+    /** @test */
+    public function it_keeps_identical_fusion_schedules_as_single_label()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+
+        $schedule = ClassSchedule::factory()->ter()->morning()->create();
+        $classA->classschedules()->attach($schedule);
+        $classB->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals('fusion', $group['type']);
+        $this->assertCount(1, $group['timeslot_ids']);
+        $this->assertEquals('ter_0800_1000', $payload['timeslots'][0]['label']);
+    }
+
+    /** @test */
+    public function it_handles_fusion_with_schedules_on_different_days_without_overlap()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+
+        $sSeg = ClassSchedule::factory()->seg()->morning()->create();
+        $sTer = ClassSchedule::factory()->ter()->morning()->create();
+
+        $classA->classschedules()->attach($sSeg);
+        $classB->classschedules()->attach($sTer);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals('fusion', $group['type']);
+        $this->assertCount(2, $group['timeslot_ids']);
+
+        $labels = array_column($payload['timeslots'], 'label');
+        $this->assertContains('seg_0800_1000', $labels);
+        $this->assertContains('ter_0800_1000', $labels);
+    }
+
+    /** @test */
     public function it_sorts_timeslots_lexicographically()
     {
         $term = SchoolTerm::factory()->create();
