@@ -14,5 +14,6 @@ class Course extends Model
         'codcur',
         'perhab',
         'grupo',
+        'sufixo_codtur',
     ];
 }
