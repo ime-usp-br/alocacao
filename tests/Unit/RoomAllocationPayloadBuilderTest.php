@@ -47,6 +47,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertCount(1, $group['timeslot_ids']);
         $this->assertEquals(0, $group['timeslot_ids'][0]);
         $this->assertNull($group['preassigned_room_id']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -89,6 +91,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertEquals([$classA->id, $classB->id], $group['class_ids']);
         $this->assertEquals(120, $group['demand']);
         $this->assertCount(2, $group['timeslot_ids']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -115,6 +119,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $group = $payload['groups'][0];
         $this->assertTrue($group['has_null_enrollment']);
         $this->assertEquals(40, $group['demand']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -315,6 +321,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $group = $payload['groups'][0];
         $this->assertEmpty($group['timeslot_ids']);
         $this->assertEmpty($payload['timeslots']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -357,6 +365,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $expectedId = min($classA->id, $classB->id);
         $this->assertEquals($expectedId, $group['id']);
         $this->assertEquals('fusion', $group['type']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -383,6 +393,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $group = $payload['groups'][0];
         $this->assertTrue($group['has_null_enrollment']);
         $this->assertEquals(0, $group['demand']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -464,6 +476,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $group = $payload['groups'][0];
         $this->assertCount(1, $group['timeslot_ids']);
         $this->assertCount(1, $payload['timeslots']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -500,6 +514,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $labels = array_column($payload['timeslots'], 'label');
         $this->assertContains('qua_1400_1600', $labels);
         $this->assertContains('seg_1600_1800', $labels);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -529,6 +545,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertEquals('fusion', $group['type']);
         $this->assertCount(1, $group['timeslot_ids']);
         $this->assertEquals('ter_0800_1000', $payload['timeslots'][0]['label']);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -563,6 +581,8 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $labels = array_column($payload['timeslots'], 'label');
         $this->assertContains('seg_0800_1000', $labels);
         $this->assertContains('ter_0800_1000', $labels);
+        $this->assertArrayHasKey('same_room_cohort', $group);
+        $this->assertNull($group['same_room_cohort']);
     }
 
     /** @test */
@@ -594,5 +614,40 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertEquals('qui_1400_1600', $labels[0]);
         $this->assertEquals('seg_0800_1000', $labels[1]);
         $this->assertEquals('ter_0800_1000', $labels[2]);
+    }
+
+    /** @test */
+    public function it_assigns_same_room_cohort_to_mandatory_initial_semesters()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $course = \App\Models\Course::factory()->create([
+            'sufixo_codtur' => '45',
+        ]);
+
+        $courseInfo = \App\Models\CourseInformation::factory()->create([
+            'tipobg' => 'O',
+            'numsemidl' => '1',
+        ]);
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '202445',
+            'tiptur' => 'Graduação',
+            'externa' => false,
+            'fusion_id' => null,
+        ]);
+
+        $class->courseinformations()->attach($courseInfo);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals('cohort_45_sem_1', $group['same_room_cohort']);
     }
 }

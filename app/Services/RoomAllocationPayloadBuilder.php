@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Course;
 use App\Models\Fusion;
 use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
@@ -28,13 +29,15 @@ class RoomAllocationPayloadBuilder
     public function build(SchoolTerm $schoolTerm, array $roomIds, array $overrides = []): array
     {
         $allClasses = SchoolClass::whereBelongsTo($schoolTerm)
-            ->with(['classschedules', 'fusion'])
+            ->with(['classschedules', 'fusion', 'courseinformations'])
             ->orderBy('id')
             ->get();
 
         $canonical = $this->canonicalize($allClasses);
 
-        $groups = $this->resolveGroups($canonical);
+        $validSuffixes = Course::all()->pluck('sufixo_codtur')->toArray();
+
+        $groups = $this->resolveGroups($canonical, $validSuffixes);
 
         $timeslots = $this->buildTimeslotCatalog($groups);
 
@@ -97,7 +100,7 @@ class RoomAllocationPayloadBuilder
      * @param Collection $schoolClasses
      * @return array
      */
-    private function resolveGroups(Collection $schoolClasses): array
+    private function resolveGroups(Collection $schoolClasses, array $validSuffixes): array
     {
         $solo = $schoolClasses->whereNull('fusion_id');
         $fused = $schoolClasses->whereNotNull('fusion_id')->groupBy('fusion_id');
@@ -105,12 +108,12 @@ class RoomAllocationPayloadBuilder
         $groups = [];
 
         foreach ($solo as $class) {
-            $groups[] = $this->buildSingleGroup([$class], null);
+            $groups[] = $this->buildSingleGroup([$class], null, $validSuffixes);
         }
 
         foreach ($fused as $fusionId => $classes) {
             $fusion = $classes->first()->fusion;
-            $groups[] = $this->buildSingleGroup($classes->all(), $fusion);
+            $groups[] = $this->buildSingleGroup($classes->all(), $fusion, $validSuffixes);
         }
 
         return $groups;
@@ -123,7 +126,7 @@ class RoomAllocationPayloadBuilder
      * @param Fusion|null $fusion
      * @return array
      */
-    private function buildSingleGroup(array $classes, ?Fusion $fusion): array
+    private function buildSingleGroup(array $classes, ?Fusion $fusion, array $validSuffixes): array
     {
         usort($classes, fn ($a, $b) => $a->id <=> $b->id);
 
@@ -149,6 +152,23 @@ class RoomAllocationPayloadBuilder
 
         $groupId = $fusion && $fusion->master_id ? $fusion->master_id : min($classIds);
 
+        $sameRoomCohort = null;
+
+        if ($tiptur === 'Graduação') {
+            foreach ($classes as $class) {
+                $suffix = substr($class->codtur, -2);
+
+                if (in_array($suffix, $validSuffixes, true)) {
+                    foreach ($class->courseinformations as $ci) {
+                        if ($ci->tipobg === 'O' && in_array($ci->numsemidl, ['1', '2'], true)) {
+                            $sameRoomCohort = "cohort_{$suffix}_sem_{$ci->numsemidl}";
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
         return [
             'id' => $groupId,
             'type' => $fusion ? 'fusion' : 'single',
@@ -161,6 +181,7 @@ class RoomAllocationPayloadBuilder
             'has_null_enrollment' => $hasNull,
             'timeslot_labels' => $timeslotLabels,
             'preassigned_room_id' => null,
+            'same_room_cohort' => $sameRoomCohort,
         ];
     }
 
