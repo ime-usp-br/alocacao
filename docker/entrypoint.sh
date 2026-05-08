@@ -3,11 +3,15 @@ set -e
 
 # -----------------------------------------------------------------------------
 # Laravel Docker Entrypoint
-# Resolve definitivamente problemas de permissão entre root e www-data
+# Resolve definitivamente problemas de permissão entre root, www-data e host.
 # -----------------------------------------------------------------------------
 
 LARAVEL_USER="www-data"
 LARAVEL_GROUP="www-data"
+
+# Detecta o UID/GID do host usando um arquivo imutável (mantém owner original)
+HOST_UID=$(stat -c '%u' composer.json)
+HOST_GID=$(stat -c '%g' composer.json)
 
 # Ensure storage directories exist with correct ownership before ANY command runs
 mkdir -p storage/framework/cache/data
@@ -41,7 +45,8 @@ if [ ! -d "node_modules" ]; then
     echo "Installing Node dependencies..."
     npm install
     echo "Building assets..."
-    npm run dev || true
+    # npm run dev pode falhar por causa do cache npm em /root; usamos npx mix como fallback
+    npm run dev 2>/dev/null || PATH="$PATH:/var/www/node_modules/.bin" npx mix || true
 fi
 
 # Copy .env if it does not exist
@@ -74,8 +79,15 @@ gosu "${LARAVEL_USER}" php artisan view:clear || true
 chown -R "${LARAVEL_USER}:${LARAVEL_GROUP}" storage bootstrap/cache
 chmod -R u+rwx storage bootstrap/cache
 
-# Ensure the main project directory is readable by www-data
-chown "${LARAVEL_USER}:${LARAVEL_GROUP}" .
+# Restore ownership of vendor/node_modules to the host user so the developer
+# can edit/delete files without sudo. Also fix .env ownership.
+chown -R "${HOST_UID}:${HOST_GID}" vendor node_modules .env 2>/dev/null || true
+chmod -R u+rx vendor node_modules 2>/dev/null || true
+
+# Ensure the main project directory is readable/writeable by both host user and www-data.
+# We set the group to www-data and add group-write so php-fpm can operate.
+chown "${HOST_UID}:${LARAVEL_GROUP}" . 2>/dev/null || true
+chmod u+rwx,g+rxs . 2>/dev/null || true
 
 # Start php-fpm
 exec php-fpm

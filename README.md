@@ -31,7 +31,7 @@ Copie o arquivo de configuração
 
 Edite o `.env` e ajuste ao menos as seguintes variáveis:
 
-- `APP_URL` — URL da aplicação, incluindo a porta (ex: `http://localhost:8000`)
+- `APP_URL` — URL da aplicação, **incluindo a porta obrigatoriamente** (ex: `http://localhost:8000` se `DOCKER_APP_PORT=8000`)
 - `DOCKER_APP_PORT` — porta exposta no host (default: `8080`)
 - `DOCKER_DB_PORT` — porta do MySQL no host (default: `3307`)
 - Variáveis do banco de dados (`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`)
@@ -47,6 +47,7 @@ O comando acima sobe automaticamente:
 - **nginx** — servidor web
 - **mysql:5.7** — banco de dados
 - **redis** — cache e filas
+- **worker** — queue worker (`php artisan queue:work`)
 
 A aplicação estará disponível em `http://localhost:${DOCKER_APP_PORT}`.
 
@@ -153,6 +154,37 @@ Instale os pacotes LaTeX para gerar os relatórios
 
 ## Troubleshooting Docker
 
+### Worker reiniciando em loop na primeira subida
+
+Na primeira subida (`docker compose up -d --build`), o container `worker` pode demorar alguns segundos para iniciar porque o `app` ainda está instalando dependências (`composer install`). O entrypoint do worker aguarda automaticamente até que `vendor/autoload.php` e o MySQL estejam prontos.
+
+**Se o worker não iniciar sozinho após 1 minuto, reinicie manualmente:**
+
+```bash
+docker compose restart worker
+```
+
+Ou use o script utilitário para reiniciar as filas:
+```bash
+./docker/exec-as-www-data.sh php artisan queue:restart
+```
+
+---
+
+### Erro no `npm run dev`: Invalid options object. Progress Plugin
+
+Se o build de assets falhar com erro do `ProgressPlugin`, isso é causado por incompatibilidade entre o `webpack` instalado e o `laravel-mix@6.0.49`.
+
+**Solução rápida dentro do container:**
+```bash
+docker compose exec app npm install webpack@5.76.0 --save-dev
+docker compose exec app npm run dev
+```
+
+O `package.json` já inclui `webpack@^5.76.0` como dependência fixa para evitar esse problema em novas instalações.
+
+---
+
 ### Permission denied em `storage/framework/cache`
 
 Se o Laravel retornar erros como:
@@ -247,3 +279,48 @@ Consulte o arquivo `.env.example` para documentação detalhada de todas as conf
 - Monitorar cache hit rate via logs
 - Ajustar `SALAS_API_RATE_LIMIT` conforme necessário
 - Verificar circuit breaker status nos logs
+
+---
+
+## Microserviço de Otimização (alocacao-solver)
+
+A funcionalidade **"Distribuir Turmas"** depende de um microserviço Python separado que executa o solver de otimização matemática (OR-Tools CP-SAT).
+
+### Configuração no `.env`
+
+```bash
+# URL do microserviço Python
+ALOCACAO_SOLVER_URL=http://localhost:5000
+
+# Token compartilhado para autenticação dos webhooks (Laravel ↔ Python)
+ALOCACAO_SOLVER_API_TOKEN=seu-token-seguro
+
+# Timeout para requisições de dispatch ao solver (segundos)
+ALOCACAO_SOLVER_TIMEOUT=60
+```
+
+> **Atenção:** sem o solver configurado e em execução, o botão "Distribuir Turmas" falhará com erro de conexão.
+
+### Subindo o solver localmente
+
+O solver é mantido em repositório separado. Para desenvolvimento local, você pode executá-lo via Docker (se disponível) ou Python diretamente:
+
+```bash
+# Exemplo com Docker (ajuste a imagem conforme o repositório oficial)
+docker run -d -p 5000:5000 -e API_TOKEN=seu-token-seguro alocacao-solver
+```
+
+Consulte a documentação do repositório `alocacao-solver` para instruções detalhadas de instalação, dependências Python e variáveis de ambiente.
+
+---
+
+### Ajuste obrigatório do `APP_URL`
+
+O `.env.example` define `APP_URL=http://localhost`, mas no ambiente Docker a porta exposta deve ser incluída:
+
+```bash
+# Se DOCKER_APP_PORT=8000
+APP_URL=http://localhost:8000
+```
+
+Sem a porta correta, redirecionamentos do Laravel (ex: após login) e geração de URLs absolutas falharão.
