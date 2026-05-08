@@ -55,6 +55,10 @@ if [ ! -f ".env" ]; then
     cp .env.example .env
 fi
 
+# Ensure .env is writable by the Laravel user before any artisan command that modifies it
+chown "${HOST_UID}:${LARAVEL_GROUP}" .env 2>/dev/null || true
+chmod u+rwx,g+rw .env 2>/dev/null || true
+
 # Generate app key if missing (run as www-data so .env remains writable by php-fpm)
 if [ -z "$(grep '^APP_KEY=' .env | cut -d '=' -f2)" ]; then
     echo "Generating application key..."
@@ -64,6 +68,10 @@ fi
 # Run migrations as www-data so any created files (e.g. SQLite) are not root-owned
 echo "Running migrations..."
 gosu "${LARAVEL_USER}" php artisan migrate --force || true
+
+# Ensure public directory is writable by www-data for storage:link
+chown "${HOST_UID}:${LARAVEL_GROUP}" public 2>/dev/null || true
+chmod u+rwx,g+rwxs public 2>/dev/null || true
 
 # Storage link as www-data
 gosu "${LARAVEL_USER}" php artisan storage:link || true
