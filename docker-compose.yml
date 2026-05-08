@@ -74,7 +74,7 @@ services:
     volumes:
       - .:/var/www
       - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
-    command: sh -c "gosu www-data php artisan queue:work --tries=3 --sleep=3 --max-time=3600"
+    entrypoint: ["sh", "./docker/worker-entrypoint.sh"]
     networks:
       - alocacao
     depends_on:
