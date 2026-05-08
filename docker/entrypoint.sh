@@ -40,10 +40,15 @@ if [ ! -d "vendor" ]; then
     composer install --no-interaction --optimize-autoloader
 fi
 
-# Install node_modules and build assets if missing
+# Install node_modules if missing
 if [ ! -d "node_modules" ]; then
     echo "Installing Node dependencies..."
     npm install
+fi
+
+# Build assets only if they are missing (avoid overwriting pre-compiled files
+# committed to the repo, since the production server has no Node/npm).
+if [ ! -f "public/js/app.js" ] || [ ! -f "public/css/app.css" ]; then
     echo "Building assets..."
     # npm run dev pode falhar por causa do cache npm em /root; usamos npx mix como fallback
     npm run dev 2>/dev/null || PATH="$PATH:/var/www/node_modules/.bin" npx mix || true
