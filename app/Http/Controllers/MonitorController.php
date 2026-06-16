@@ -75,11 +75,15 @@ class MonitorController extends Controller
             'status' => $cached['status'] ?? 'unknown',
             'message' => $cached['message'] ?? '',
             'failed' => $isFailed,
+            'assignments_count' => $cached['assignments_count'] ?? 0,
+            'unassigned_count' => $cached['unassigned_count'] ?? 0,
+            'manual_count' => $cached['manual_count'] ?? 0,
             'data' => json_encode([
                 'status' => $cached['status'],
                 'message' => $cached['message'],
                 'assignments_count' => $cached['assignments_count'] ?? 0,
                 'unassigned_count' => $cached['unassigned_count'] ?? 0,
+                'manual_count' => $cached['manual_count'] ?? 0,
             ]),
         ]);
     }

@@ -368,12 +368,27 @@ class RoomController extends Controller
             $assignments = $data['assignments'] ?? [];
             $unassignedGroups = $data['unassigned_groups'] ?? [];
 
-            DB::transaction(function () use ($assignments, $unassignedGroups) {
+            $manualCount = 0;
+            $autoCount = 0;
+
+            DB::transaction(function () use ($assignments, $unassignedGroups, &$manualCount, &$autoCount) {
                 foreach ($assignments as $assignment) {
                     SchoolClass::where('id', $assignment['group_id'])->update(['room_id' => $assignment['room_id']]);
+                    $autoCount++;
                 }
+
                 if (! empty($unassignedGroups)) {
-                    SchoolClass::whereIn('id', $unassignedGroups)->update(['room_id' => null]);
+                    $alreadyAllocated = SchoolClass::whereIn('id', $unassignedGroups)
+                        ->whereNotNull('room_id')
+                        ->pluck('id')
+                        ->toArray();
+
+                    $toClear = array_diff($unassignedGroups, $alreadyAllocated);
+                    if (! empty($toClear)) {
+                        SchoolClass::whereIn('id', $toClear)->update(['room_id' => null]);
+                    }
+
+                    $manualCount = count($alreadyAllocated);
                 }
             });
 
@@ -388,8 +403,9 @@ class RoomController extends Controller
                 'progress' => 100,
                 'message' => 'Distribuição concluída (via resgate)',
                 'finished_at' => now()->toIso8601String(),
-                'assignments_count' => count($assignments),
-                'unassigned_count' => count($unassignedGroups),
+                'assignments_count' => $autoCount,
+                'unassigned_count' => count($unassignedGroups) - $manualCount,
+                'manual_count' => $manualCount,
             ], now()->addHours(4));
 
             Session::put("alert-info", "Resultado resgatado e aplicado com sucesso.");
