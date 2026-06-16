@@ -29,7 +29,7 @@ class RoomAllocationPayloadBuilder
     public function build(SchoolTerm $schoolTerm, array $roomIds, array $overrides = []): array
     {
         $allClasses = SchoolClass::whereBelongsTo($schoolTerm)
-            ->with(['classschedules', 'fusion', 'courseinformations', 'room'])
+            ->with(['classschedules', 'fusion.master', 'fusion.master.room', 'courseinformations', 'room'])
             ->orderBy('id')
             ->get();
 
