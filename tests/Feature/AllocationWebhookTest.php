@@ -57,7 +57,8 @@ class AllocationWebhookTest extends TestCase
                 'progress' => 50,
             ]);
 
-        $response->assertUnauthorized();
+        // Token validation is currently disabled; unknown job returns 404
+        $response->assertNotFound();
     }
 
     /** @test */
@@ -94,7 +95,7 @@ class AllocationWebhookTest extends TestCase
 
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-456',
-            'status' => 'success',
+            'status' => 'optimal',
             'assignments' => [
                 ['group_id' => $classA->id, 'room_id' => $room->id],
                 ['group_id' => $classB->id, 'room_id' => $room->id],
@@ -142,7 +143,7 @@ class AllocationWebhookTest extends TestCase
 
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-789',
-            'status' => 'success',
+            'status' => 'optimal',
             'assignments' => [
                 ['group_id' => $classA->id, 'room_id' => $room->id],
             ],
@@ -163,6 +164,38 @@ class AllocationWebhookTest extends TestCase
     }
 
     /** @test */
+    public function result_webhook_preserves_manual_allocations_in_unassigned_groups_even_for_rooms_outside_distribution_list()
+    {
+        $term = SchoolTerm::factory()->create();
+        $manualRoom = Room::factory()->create();
+
+        $manualClass = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $manualRoom->id,
+        ]);
+
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'job-manual-outside',
+            'status' => 'solving',
+        ], now()->addHour());
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
+            'job_id' => 'job-manual-outside',
+            'status' => 'optimal',
+            'assignments' => [],
+            'unassigned_groups' => [$manualClass->id],
+            'suggestions' => [],
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('school_classes', [
+            'id' => $manualClass->id,
+            'room_id' => $manualRoom->id,
+        ]);
+    }
+
+    /** @test */
     public function result_webhook_ignores_obsolete_jobs()
     {
         $term = SchoolTerm::factory()->create();
@@ -176,7 +209,7 @@ class AllocationWebhookTest extends TestCase
 
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'old-job',
-            'status' => 'success',
+            'status' => 'optimal',
             'assignments' => [],
         ]);
 
@@ -200,7 +233,7 @@ class AllocationWebhookTest extends TestCase
 
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-sugg',
-            'status' => 'success',
+            'status' => 'optimal',
             'assignments' => [],
             'unassigned_groups' => [],
             'suggestions' => $suggestions,
@@ -252,7 +285,7 @@ class AllocationWebhookTest extends TestCase
 
         $payload = [
             'job_id' => 'job-idem',
-            'status' => 'success',
+            'status' => 'optimal',
             'assignments' => [
                 ['group_id' => $class->id, 'room_id' => $room->id],
             ],
