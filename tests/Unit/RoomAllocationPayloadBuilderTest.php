@@ -29,6 +29,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
             'estmtr' => 55,
             'externa' => false,
             'fusion_id' => null,
+            'room_id' => null,
         ]);
         $schedule = ClassSchedule::factory()->seg()->morning()->create();
         $class->classschedules()->attach($schedule);
@@ -185,6 +186,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
 
         SchoolClass::factory()->create([
             'school_term_id' => $term->id,
+            'room_id' => null,
         ]);
 
         $builder = new RoomAllocationPayloadBuilder();
@@ -311,7 +313,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $payload = $builder->build($term, [$room->id]);
 
         $this->assertArrayHasKey('meta', $payload);
-        $this->assertEquals('1.0.0', $payload['meta']['version']);
+        $this->assertEquals('1.1.0', $payload['meta']['version']);
         $this->assertEquals($term->id, $payload['meta']['school_term_id']);
         $this->assertEquals(RoomAllocationPayloadBuilder::class, $payload['meta']['builder_class']);
         $this->assertNotEmpty($payload['meta']['generated_at']);
@@ -454,6 +456,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
 
         SchoolClass::factory()->create([
             'school_term_id' => $term->id,
+            'room_id' => null,
         ]);
 
         $builder = new RoomAllocationPayloadBuilder();
@@ -862,7 +865,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     }
 
     /** @test */
-    public function it_does_not_set_preassigned_room_id_when_class_room_is_not_in_available_list()
+    public function it_sets_preassigned_room_id_even_when_class_room_is_not_in_available_list()
     {
         $term = SchoolTerm::factory()->create();
         $roomA = Room::factory()->create();
@@ -882,7 +885,14 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $payload = $builder->build($term, [$roomA->id]);
 
         $group = $payload['groups'][0];
-        $this->assertNull($group['preassigned_room_id']);
+        $this->assertEquals($roomB->id, $group['preassigned_room_id']);
+
+        $roomIds = array_column($payload['rooms'], 'id');
+        $this->assertContains($roomB->id, $roomIds);
+
+        $roomMap = array_column($payload['rooms'], null, 'id');
+        $this->assertTrue($roomMap[$roomA->id]['available_for_auto']);
+        $this->assertFalse($roomMap[$roomB->id]['available_for_auto']);
     }
 
     /** @test */
@@ -913,5 +923,122 @@ class RoomAllocationPayloadBuilderTest extends TestCase
 
         $group = $payload['groups'][0];
         $this->assertEquals($room->id, $group['preassigned_room_id']);
+    }
+
+    /** @test */
+    public function it_includes_manual_room_in_payload_with_available_for_auto_false()
+    {
+        $term = SchoolTerm::factory()->create();
+        $autoRoom = Room::factory()->create();
+        $manualRoom = Room::factory()->create();
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $manualRoom->id,
+            'externa' => false,
+            'fusion_id' => null,
+        ]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$autoRoom->id]);
+
+        $this->assertCount(2, $payload['rooms']);
+
+        $roomMap = array_column($payload['rooms'], null, 'id');
+        $this->assertTrue($roomMap[$autoRoom->id]['available_for_auto']);
+        $this->assertFalse($roomMap[$manualRoom->id]['available_for_auto']);
+    }
+
+    /** @test */
+    public function it_includes_manual_room_for_fusion_with_available_for_auto_false()
+    {
+        $term = SchoolTerm::factory()->create();
+        $autoRoom = Room::factory()->create();
+        $manualRoom = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $master = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $manualRoom->id,
+            'fusion_id' => $fusion->id,
+        ]);
+        $slave = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'fusion_id' => $fusion->id,
+        ]);
+        $fusion->master()->associate($master);
+        $fusion->save();
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $master->classschedules()->attach($schedule);
+        $slave->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$autoRoom->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals($manualRoom->id, $group['preassigned_room_id']);
+
+        $roomMap = array_column($payload['rooms'], null, 'id');
+        $this->assertTrue($roomMap[$autoRoom->id]['available_for_auto']);
+        $this->assertFalse($roomMap[$manualRoom->id]['available_for_auto']);
+    }
+
+    /** @test */
+    public function it_does_not_include_unrelated_manual_rooms()
+    {
+        $term = SchoolTerm::factory()->create();
+        $autoRoom = Room::factory()->create();
+        $manualRoom = Room::factory()->create();
+        $unusedRoom = Room::factory()->create();
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $manualRoom->id,
+            'externa' => false,
+            'fusion_id' => null,
+        ]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$autoRoom->id]);
+
+        $roomIds = array_column($payload['rooms'], 'id');
+        $this->assertContains($autoRoom->id, $roomIds);
+        $this->assertContains($manualRoom->id, $roomIds);
+        $this->assertNotContains($unusedRoom->id, $roomIds);
+    }
+
+    /** @test */
+    public function it_sets_room_available_for_auto_true_for_selected_rooms()
+    {
+        $term = SchoolTerm::factory()->create();
+        $roomA = Room::factory()->create();
+        $roomB = Room::factory()->create();
+
+        SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+            'fusion_id' => null,
+        ]);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$roomA->id, $roomB->id]);
+
+        $roomMap = array_column($payload['rooms'], null, 'id');
+        $this->assertTrue($roomMap[$roomA->id]['available_for_auto']);
+        $this->assertTrue($roomMap[$roomB->id]['available_for_auto']);
+    }
+
+    /** @test */
+    public function it_bumps_schema_version_to_1_1_0()
+    {
+        $this->assertEquals('1.1.0', RoomAllocationPayloadBuilder::schemaVersion());
     }
 }

@@ -15,7 +15,7 @@ class RoomAllocationPayloadBuilder
      */
     public static function schemaVersion(): string
     {
-        return '1.0.0';
+        return '1.1.0';
     }
 
     /**
@@ -37,7 +37,7 @@ class RoomAllocationPayloadBuilder
 
         $validSuffixes = Course::all()->pluck('sufixo_codtur')->toArray();
 
-        $groups = $this->resolveGroups($canonical, $validSuffixes, $roomIds);
+        $groups = $this->resolveGroups($canonical, $validSuffixes);
 
         $timeslots = $this->buildTimeslotCatalog($groups);
 
@@ -59,16 +59,30 @@ class RoomAllocationPayloadBuilder
 
         usort($finalGroups, fn ($a, $b) => $a['id'] <=> $b['id']);
 
-        $rooms = \App\Models\Room::whereIn('id', $roomIds)
+        $extraRoomIds = [];
+        foreach ($finalGroups as $group) {
+            $pid = $group['preassigned_room_id'];
+            if ($pid !== null && ! in_array($pid, $roomIds, true)) {
+                $extraRoomIds[] = $pid;
+            }
+        }
+        $extraRoomIds = array_values(array_unique($extraRoomIds));
+
+        $allRoomIds = array_merge($roomIds, $extraRoomIds);
+
+        $roomModels = \App\Models\Room::whereIn('id', $allRoomIds)
             ->orderBy('id')
-            ->get()
-            ->map(fn ($room) => [
+            ->get();
+
+        $rooms = [];
+        foreach ($roomModels as $room) {
+            $rooms[] = [
                 'id' => $room->id,
                 'name' => $room->nome,
                 'capacity' => $room->assentos,
-            ])
-            ->values()
-            ->all();
+                'available_for_auto' => in_array($room->id, $roomIds, true),
+            ];
+        }
 
         return [
             'meta' => $this->buildMeta($schoolTerm),
@@ -100,7 +114,7 @@ class RoomAllocationPayloadBuilder
      * @param Collection $schoolClasses
      * @return array
      */
-    private function resolveGroups(Collection $schoolClasses, array $validSuffixes, array $availableRoomIds): array
+    private function resolveGroups(Collection $schoolClasses, array $validSuffixes): array
     {
         $solo = $schoolClasses->whereNull('fusion_id');
         $fused = $schoolClasses->whereNotNull('fusion_id')->groupBy('fusion_id');
@@ -108,12 +122,12 @@ class RoomAllocationPayloadBuilder
         $groups = [];
 
         foreach ($solo as $class) {
-            $groups[] = $this->buildSingleGroup([$class], null, $validSuffixes, $availableRoomIds);
+            $groups[] = $this->buildSingleGroup([$class], null, $validSuffixes);
         }
 
         foreach ($fused as $fusionId => $classes) {
             $fusion = $classes->first()->fusion;
-            $groups[] = $this->buildSingleGroup($classes->all(), $fusion, $validSuffixes, $availableRoomIds);
+            $groups[] = $this->buildSingleGroup($classes->all(), $fusion, $validSuffixes);
         }
 
         return $groups;
@@ -157,7 +171,7 @@ class RoomAllocationPayloadBuilder
      * @param Fusion|null $fusion
      * @return array
      */
-    private function buildSingleGroup(array $classes, ?Fusion $fusion, array $validSuffixes, array $availableRoomIds): array
+    private function buildSingleGroup(array $classes, ?Fusion $fusion, array $validSuffixes): array
     {
         usort($classes, fn ($a, $b) => $a->id <=> $b->id);
 
@@ -202,9 +216,7 @@ class RoomAllocationPayloadBuilder
         } else {
             $rawRoomId = $representative->room_id;
         }
-        $preassignedRoomId = ($rawRoomId !== null && in_array($rawRoomId, $availableRoomIds, true))
-            ? $rawRoomId
-            : null;
+        $preassignedRoomId = $rawRoomId;
 
         return [
             'id' => $groupId,
