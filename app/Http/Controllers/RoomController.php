@@ -365,7 +365,7 @@ class RoomController extends Controller
             }
 
             $data = $response->json();
-            $assignments = $data['assignments'] ?? [];
+            $assignments = $data['allocations'] ?? [];
             $unassignedGroups = $data['unassigned_groups'] ?? [];
 
             $manualCount = 0;
