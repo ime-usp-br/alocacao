@@ -187,7 +187,21 @@ class RoomAllocationPayloadBuilder
         $isFreshmen = $cohortData !== null;
         $sameRoomCohort = $isFreshmen ? "cohort_{$cohortData['suffix']}_sem_{$cohortData['semester']}" : null;
 
-        $rawRoomId = $fusion && $fusion->master ? $fusion->master->room_id : $representative->room_id;
+        if ($fusion) {
+            $rawRoomId = $fusion->master && $fusion->master->room_id
+                ? $fusion->master->room_id
+                : null;
+            if ($rawRoomId === null) {
+                foreach ($classes as $c) {
+                    if ($c->room_id !== null) {
+                        $rawRoomId = $c->room_id;
+                        break;
+                    }
+                }
+            }
+        } else {
+            $rawRoomId = $representative->room_id;
+        }
         $preassignedRoomId = ($rawRoomId !== null && in_array($rawRoomId, $availableRoomIds, true))
             ? $rawRoomId
             : null;
