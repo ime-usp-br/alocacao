@@ -23,8 +23,8 @@ class AllocationResultWebhookController extends Controller
             'job_id' => 'required|string',
             'status' => 'required|string|in:optimal,feasible,stopped,infeasible,error',
             'allocations' => 'nullable|array',
-            'assignments.*.group_id' => 'required_with:assignments|integer',
-            'assignments.*.room_id' => 'required_with:assignments|integer',
+            'allocations.*.group_id' => 'required_with:allocations|integer',
+            'allocations.*.room_id' => 'required_with:allocations|integer',
             'unassigned_groups' => 'nullable|array',
             'unassigned_groups.*' => 'integer',
             'suggestions' => 'nullable|array',
@@ -33,7 +33,7 @@ class AllocationResultWebhookController extends Controller
 
         $jobId = $validated['job_id'];
         $status = $validated['status'];
-        $assignments = $validated['allocations'] ??[];
+        $assignments = $validated['allocations'] ?? [];
         $unassignedGroups = $validated['unassigned_groups'] ?? [];
         $suggestions = $validated['suggestions'] ?? [];
 
