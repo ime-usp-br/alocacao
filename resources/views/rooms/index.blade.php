@@ -371,7 +371,20 @@ $( function() {
                             document.getElementById("btn-fallback-distribution").style.display = 'none';
                             $( "#progressbar" ).remove();
                             $('#flash-message').empty();
-                            $('#flash-message').append("<p id='success-message' class='alert alert-success'>As turmas foram distribuídas nas salas com sucesso.</p>");
+
+                            var autoCount = json['assignments_count'] || 0;
+                            var manualCount = json['manual_count'] || 0;
+                            var unassignedCount = json['unassigned_count'] || 0;
+                            var successMsg = 'Distribuição concluída. ' +
+                                autoCount + ' turma(s) alocada(s) automaticamente';
+                            if (manualCount > 0) {
+                                successMsg += ', ' + manualCount + ' turma(s) manual(is) preservada(s)';
+                            }
+                            if (unassignedCount > 0) {
+                                successMsg += ', ' + unassignedCount + ' turma(s) não alocada(s)';
+                            }
+                            successMsg += '.';
+                            $('#flash-message').append("<p id='success-message' class='alert alert-success'>" + successMsg + "</p>");
 
                             setTimeout(function() { window.location.reload(); }, 2500);
                         }

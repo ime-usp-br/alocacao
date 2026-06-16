@@ -75,19 +75,33 @@ class AllocationResultWebhookController extends Controller
             return response()->json(['message' => 'Error recorded'], 200);
         }
 
+        $manualCount = 0;
+        $autoCount = 0;
+
         try {
-            DB::transaction(function () use ($assignments, $unassignedGroups) {
+            DB::transaction(function () use ($assignments, $unassignedGroups, &$manualCount, &$autoCount) {
                 // Apply allocated room_ids
                 foreach ($assignments as $assignment) {
                     $groupId = $assignment['group_id'];
                     $roomId = $assignment['room_id'];
 
                     SchoolClass::where('id', $groupId)->update(['room_id' => $roomId]);
+                    $autoCount++;
                 }
 
-                // Clear unassigned groups
+                // Clear unassigned groups, but preserve manual allocations
                 if (! empty($unassignedGroups)) {
-                    SchoolClass::whereIn('id', $unassignedGroups)->update(['room_id' => null]);
+                    $alreadyAllocated = SchoolClass::whereIn('id', $unassignedGroups)
+                        ->whereNotNull('room_id')
+                        ->pluck('id')
+                        ->toArray();
+
+                    $toClear = array_diff($unassignedGroups, $alreadyAllocated);
+                    if (! empty($toClear)) {
+                        SchoolClass::whereIn('id', $toClear)->update(['room_id' => null]);
+                    }
+
+                    $manualCount = count($alreadyAllocated);
                 }
             });
         } catch (\Exception $e) {
@@ -119,15 +133,17 @@ class AllocationResultWebhookController extends Controller
         $activeJob['progress'] = 100;
         $activeJob['message'] = 'Distribuição concluída';
         $activeJob['finished_at'] = now()->toIso8601String();
-        $activeJob['assignments_count'] = count($assignments);
-        $activeJob['unassigned_count'] = count($unassignedGroups);
+        $activeJob['assignments_count'] = $autoCount;
+        $activeJob['unassigned_count'] = count($unassignedGroups) - $manualCount;
+        $activeJob['manual_count'] = $manualCount;
         Cache::put($cacheKey, $activeJob, now()->addHours(4));
 
         Log::info('AllocationResultWebhook: results applied successfully', [
             'job_id' => $jobId,
             'school_term_id' => $schoolTermId,
-            'assignments_count' => count($assignments),
-            'unassigned_count' => count($unassignedGroups),
+            'assignments_count' => $autoCount,
+            'unassigned_count' => count($unassignedGroups) - $manualCount,
+            'manual_count' => $manualCount,
         ]);
 
         return response()->json(['message' => 'Results applied'], 200);
