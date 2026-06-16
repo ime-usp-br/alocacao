@@ -202,7 +202,18 @@ class RoomController extends Controller
 
         $validated = $request->validated();
 
-        $room->schoolclasses()->save(SchoolClass::find($validated["school_class_id"]));
+        $schoolClass = SchoolClass::find($validated["school_class_id"]);
+        $room->schoolclasses()->save($schoolClass);
+
+        // If the class is part of a fusion, ensure the master also gets the room_id
+        if ($schoolClass->fusion_id) {
+            $fusion = $schoolClass->fusion;
+            if ($fusion && $fusion->master_id && $fusion->master_id != $schoolClass->id) {
+                $master = $fusion->master;
+                $master->room_id = $room->id;
+                $master->save();
+            }
+        }
 
         return back();
     }
