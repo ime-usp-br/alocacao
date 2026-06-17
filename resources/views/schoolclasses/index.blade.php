@@ -54,6 +54,7 @@
                         <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
+                        <th>Inscritos</th>
                         <th>Horários</th>
                         <th>Professor(es)</th>
                         <th>Início</th>
@@ -78,6 +79,7 @@
                                 @endif
                             </td>
                             <td>{{ $turma->tiptur }}</td>
+                            <td>{{ $turma->estmtr ?? '-' }}</td>
                             <td style="white-space: nowrap;">
                                 @foreach($turma->classschedules as $horario)
                                     {{ $horario->diasmnocp . ' ' . $horario->horent . ' ' . $horario->horsai }} <br/>

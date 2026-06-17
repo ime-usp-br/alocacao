@@ -26,6 +26,7 @@
                         <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
+                        <th>Inscritos</th>
                         <th>Desmembrar<br></th>
                     </tr>
 
@@ -66,6 +67,7 @@
                                 <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->codtur }}</td>
                                 <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->nomdis }}</td>
                                 <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->tiptur }}</td>
+                                <td style="vertical-align: middle;">{{ $fusion->schoolclasses[$x]->estmtr ?? '-' }}</td>
                                 <td>
                                     <form method="get"  action="{{ route('fusions.disjoint', $fusion->schoolclasses[$x]) }}" style="display: inline;">
                                         @csrf

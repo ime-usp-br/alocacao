@@ -200,6 +200,7 @@
                         <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
+                        <th>Inscritos</th>
                         <th>Horários</th>
                         <th>Professor(es)</th>
                     </tr>
@@ -220,6 +221,7 @@
                                 @endif
                             </td>
                             <td>{{ $turma->tiptur }}</td>
+                            <td>{{ $turma->estmtr ?? '-' }}</td>
                             <td style="{{ $room->isCompatible($turma, $ignore_block=true, $ignore_estmtr=true) ? 'white-space: nowrap;color:green;' : 'white-space: nowrap;color:red' }}">
                                 @foreach($turma->classschedules as $horario)
                                     {{ $horario->diasmnocp . ' ' . $horario->horent . ' ' . $horario->horsai }} <br/>
@@ -246,6 +248,7 @@
                         <th>Código da Turma</th>
                         <th>Nome da Disciplina</th>
                         <th>Tipo da Turma</th>
+                        <th>Inscritos</th>
                         <th>Horários</th>
                         <th>Professor(es)</th>
                     </tr>
@@ -289,6 +292,7 @@
                                     @endif
                                 </td>
                                 <td>{{ $fusion->schoolclasses[$x]->tiptur }}</td>
+                                <td>{{ $fusion->schoolclasses[$x]->estmtr ?? '-' }}</td>
                                 @if($x == 0)
                                     <td rowspan="{{count($fusion->schoolclasses)}}" 
                                     style="{{ $room->isCompatible($fusion->master, $ignore_block=true, $ignore_estmtr=true) ? 'white-space: nowrap;vertical-align: middle;color:green;' : 'white-space: nowrap;vertical-align: middle;color:red' }}">

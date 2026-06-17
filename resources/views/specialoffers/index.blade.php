@@ -31,6 +31,7 @@
                         <th>Código da Disciplina</th>
                         <th>Nome da Disciplina</th>
                         <th>Código da Turma</th>
+                        <th>Inscritos</th>
                         <th>Horários</th>
                         <th>Professor(es)</th>
                     </tr>
@@ -61,10 +62,12 @@
                                     <td>Sem oferecimento</td>
                                     <td>Sem oferecimento</td>
                                     <td>Sem oferecimento</td>
+                                    <td>Sem oferecimento</td>
                                     </tr>
                                 @else
                                     @foreach($disciplina['turmas'] as $turma)
                                         <td>{{ $turma->codtur }}</td>
+                                        <td>{{ $turma->estmtr ?? '-' }}</td>
                                         <td style="white-space: nowrap;">
                                             @foreach($turma->classschedules as $horario)
                                                 {{ $horario->diasmnocp . ' ' . $horario->horent . ' ' . $horario->horsai }} <br/>
