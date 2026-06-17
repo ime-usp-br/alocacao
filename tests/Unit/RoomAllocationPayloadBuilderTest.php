@@ -177,7 +177,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     }
 
     /** @test */
-    public function it_only_includes_specified_rooms()
+    public function it_includes_all_rooms_and_marks_only_selected_as_available_for_auto()
     {
         $term = SchoolTerm::factory()->create();
         $roomA = Room::factory()->create();
@@ -192,9 +192,14 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $builder = new RoomAllocationPayloadBuilder();
         $payload = $builder->build($term, [$roomA->id, $roomC->id]);
 
-        $roomIds = array_column($payload['rooms'], 'id');
-        $this->assertEquals([$roomA->id, $roomC->id], $roomIds);
-        $this->assertNotContains($roomB->id, $roomIds);
+        $roomMap = array_column($payload['rooms'], null, 'id');
+        $this->assertArrayHasKey($roomA->id, $roomMap);
+        $this->assertArrayHasKey($roomB->id, $roomMap);
+        $this->assertArrayHasKey($roomC->id, $roomMap);
+
+        $this->assertTrue($roomMap[$roomA->id]['available_for_auto']);
+        $this->assertFalse($roomMap[$roomB->id]['available_for_auto']);
+        $this->assertTrue($roomMap[$roomC->id]['available_for_auto']);
     }
 
     /** @test */
@@ -1029,7 +1034,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     }
 
     /** @test */
-    public function it_does_not_include_unrelated_manual_rooms()
+    public function it_marks_unrelated_rooms_as_unavailable_for_auto()
     {
         $term = SchoolTerm::factory()->create();
         $autoRoom = Room::factory()->create();
@@ -1049,10 +1054,10 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $builder = new RoomAllocationPayloadBuilder();
         $payload = $builder->build($term, [$autoRoom->id]);
 
-        $roomIds = array_column($payload['rooms'], 'id');
-        $this->assertContains($autoRoom->id, $roomIds);
-        $this->assertContains($manualRoom->id, $roomIds);
-        $this->assertNotContains($unusedRoom->id, $roomIds);
+        $roomMap = array_column($payload['rooms'], null, 'id');
+        $this->assertTrue($roomMap[$autoRoom->id]['available_for_auto']);
+        $this->assertFalse($roomMap[$manualRoom->id]['available_for_auto']);
+        $this->assertFalse($roomMap[$unusedRoom->id]['available_for_auto']);
     }
 
     /** @test */
