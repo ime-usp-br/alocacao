@@ -166,7 +166,7 @@ class AllocationWebhookTest extends TestCase
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-456',
             'status' => 'optimal',
-            'assignments' => [
+            'allocations' => [
                 ['group_id' => $classA->id, 'room_id' => $room->id],
                 ['group_id' => $classB->id, 'room_id' => $room->id],
             ],
@@ -203,7 +203,7 @@ class AllocationWebhookTest extends TestCase
         ]);
         $classB = SchoolClass::factory()->create([
             'school_term_id' => $term->id,
-            'room_id' => $room->id,
+            'room_id' => null,
         ]);
 
         Cache::put("allocation:{$term->id}", [
@@ -214,7 +214,7 @@ class AllocationWebhookTest extends TestCase
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-789',
             'status' => 'optimal',
-            'assignments' => [
+            'allocations' => [
                 ['group_id' => $classA->id, 'room_id' => $room->id],
             ],
             'unassigned_groups' => [$classB->id],
@@ -252,7 +252,7 @@ class AllocationWebhookTest extends TestCase
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-manual-outside',
             'status' => 'optimal',
-            'assignments' => [],
+            'allocations' => [],
             'unassigned_groups' => [$manualClass->id],
             'suggestions' => [],
         ]);
@@ -280,7 +280,7 @@ class AllocationWebhookTest extends TestCase
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'old-job',
             'status' => 'optimal',
-            'assignments' => [],
+            'allocations' => [],
         ]);
 
         $response->assertOk();
@@ -304,7 +304,7 @@ class AllocationWebhookTest extends TestCase
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-sugg',
             'status' => 'optimal',
-            'assignments' => [],
+            'allocations' => [],
             'unassigned_groups' => [],
             'suggestions' => $suggestions,
         ]);
@@ -328,7 +328,7 @@ class AllocationWebhookTest extends TestCase
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
             'job_id' => 'job-err',
             'status' => 'error',
-            'assignments' => [],
+            'allocations' => [],
         ]);
 
         $response->assertOk();
@@ -356,7 +356,7 @@ class AllocationWebhookTest extends TestCase
         $payload = [
             'job_id' => 'job-idem',
             'status' => 'optimal',
-            'assignments' => [
+            'allocations' => [
                 ['group_id' => $class->id, 'room_id' => $room->id],
             ],
             'unassigned_groups' => [],

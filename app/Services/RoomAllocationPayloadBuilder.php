@@ -28,6 +28,8 @@ class RoomAllocationPayloadBuilder
      */
     public function build(SchoolTerm $schoolTerm, array $roomIds, array $overrides = []): array
     {
+        $roomIds = array_map('intval', $roomIds);
+
         $allClasses = SchoolClass::whereBelongsTo($schoolTerm)
             ->with(['classschedules', 'fusion.master', 'fusion.master.room', 'courseinformations', 'room'])
             ->orderBy('id')
@@ -77,11 +79,7 @@ class RoomAllocationPayloadBuilder
         }
         $extraRoomIds = array_values(array_unique($extraRoomIds));
 
-        $allRoomIds = array_merge($roomIds, $extraRoomIds);
-
-        $roomModels = \App\Models\Room::whereIn('id', $allRoomIds)
-            ->orderBy('id')
-            ->get();
+        $roomModels = \App\Models\Room::orderBy('id')->get();
 
         $rooms = [];
         foreach ($roomModels as $room) {
