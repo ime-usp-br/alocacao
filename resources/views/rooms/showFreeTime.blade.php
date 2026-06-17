@@ -64,6 +64,7 @@
                                 <th>Código da Turma</th>
                                 <th>Nome da Disciplina</th>
                                 <th>Tipo da Turma</th>
+                                <th>Inscritos</th>
                                 <th>Horários</th>
                                 <th>Professor(es)</th>
                                 <th>Salas<br>Compatíveis</th>
@@ -85,6 +86,7 @@
                                         @endif
                                     </td>
                                     <td>{{ $turma->tiptur }}</td>
+                                    <td>{{ $turma->estmtr ?? '-' }}</td>
                                     <td style="white-space: nowrap;">
                                         @foreach($turma->classschedules as $horario)
                                             {{ $horario->diasmnocp . ' ' . $horario->horent . ' ' . $horario->horsai }} <br/>
@@ -131,6 +133,7 @@
                                 <th>Código da Turma</th>
                                 <th>Nome da Disciplina</th>
                                 <th>Tipo da Turma</th>
+                                <th>Inscritos</th>
                                 <th>Horários</th>
                                 <th>Professor(es)</th>
                                 <th>Salas<br>Compatíveis</th>
@@ -170,6 +173,7 @@
                                             @endif
                                         </td>
                                         <td>{{ $fusion->schoolclasses[$x]->tiptur }}</td>
+                                        <td>{{ $fusion->schoolclasses[$x]->estmtr ?? '-' }}</td>
                                         @if($x == 0)
                                             <td rowspan="{{count($fusion->schoolclasses)}}" 
                                             style="white-space: nowrap;vertical-align: middle;">
