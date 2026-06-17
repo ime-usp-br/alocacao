@@ -98,6 +98,10 @@
                                     Verificar Resultado Manualmente
                                 </button>
                             </form>
+
+                            <button class="btn btn-outline-info" id="btn-allocation-states" data-toggle="modal" data-target="#allocationStatesModal">
+                                Histórico de Estados
+                            </button>
                         </div>
                     <br>
 
@@ -209,6 +213,54 @@
             @else
                 <p class="text-center">Não há salas cadastradas</p>
             @endif
+        </div>
+    </div>
+</div>
+
+<!-- Modal Gerenciador de Alocações -->
+<div class="modal fade" id="allocationStatesModal" tabindex="-1" role="dialog" aria-labelledby="allocationStatesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="allocationStatesModalLabel">Gerenciador de Alocações</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="saveAllocationStateForm" action="{{ route('allocation-states.store') }}" method="POST">
+                    @csrf
+                    <div class="form-group">
+                        <label for="allocation_state_name">Nome do estado</label>
+                        <input type="text" class="form-control" id="allocation_state_name" name="name"
+                               placeholder="Ex: Antes da reunião de departamento">
+                    </div>
+                    <button type="submit" class="btn btn-primary mb-3">Salvar Estado Atual</button>
+                </form>
+
+                <hr>
+
+                <h6>Estados salvos</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered table-hover" id="allocationStatesTable">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Data</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="3" class="text-center">Carregando...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -406,6 +458,59 @@ $( function() {
         });
     }
     setTimeout( progressDistribution, 50 );
+
+    function loadAllocationStates() {
+        $.ajax({
+            url: "{{ route('allocation-states.index') }}",
+            dataType: 'json',
+            success: function(data) {
+                var tbody = $('#allocationStatesTable tbody');
+                tbody.empty();
+
+                if (data.states.length === 0) {
+                    tbody.append('<tr><td colspan="3" class="text-center">Nenhum estado salvo.</td></tr>');
+                    return;
+                }
+
+                data.states.forEach(function(state) {
+                    var disabled = data.is_solving ? 'disabled' : '';
+                    var row = '<tr>' +
+                        '<td>' + escapeHtml(state.name) + '</td>' +
+                        '<td>' + escapeHtml(state.created_at) + '</td>' +
+                        '<td>' +
+                            '<form style="display: inline;" action="/allocation-states/' + state.id + '/restore" method="POST">' +
+                                '@csrf' +
+                                '<button type="submit" class="btn btn-sm btn-outline-success" ' + disabled + '>Carregar</button>' +
+                            '</form> ' +
+                            '<form style="display: inline;" action="/allocation-states/' + state.id + '" method="POST">' +
+                                '@csrf' +
+                                '@method('DELETE')' +
+                                '<button type="submit" class="btn btn-sm btn-outline-danger">Excluir</button>' +
+                            '</form>' +
+                        '</td>' +
+                    '</tr>';
+                    tbody.append(row);
+                });
+            },
+            error: function() {
+                $('#allocationStatesTable tbody').html('<tr><td colspan="3" class="text-center text-danger">Erro ao carregar estados.</td></tr>');
+            }
+        });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    $('#allocationStatesModal').on('shown.bs.modal', function () {
+        loadAllocationStates();
+    });
 });
 </script>
 @endsection

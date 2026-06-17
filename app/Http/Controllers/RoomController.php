@@ -29,6 +29,7 @@ use App\Models\SchoolClass;
 use App\Models\CourseInformation;
 use App\Models\Fusion;
 use App\Services\ReservationApiService;
+use App\Services\AllocationStateService;
 use Illuminate\Support\Facades\Auth;
 
 
@@ -496,6 +497,11 @@ class RoomController extends Controller
         $rooms_ids = $validated["rooms_id"];
 
         $schoolterm = SchoolTerm::getLatest();
+
+        AllocationStateService::capture(
+            $schoolterm,
+            'Pré-Esvaziamento - ' . now()->format('d/m/Y H:i:s')
+        );
 
         $schoolclasses = SchoolClass::whereBelongsTo($schoolterm)->whereHas("room", function($query)use($rooms_ids){
             $query->whereIn("id", $rooms_ids);

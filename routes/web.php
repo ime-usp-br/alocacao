@@ -14,6 +14,7 @@ use App\Http\Controllers\CourseInformationController;
 use App\Http\Controllers\CurriculumController;
 use App\Http\Controllers\SpecialOfferController;
 use App\Http\Controllers\SolverLogController;
+use App\Http\Controllers\AllocationStateController;
 
 /*
 |--------------------------------------------------------------------------
@@ -62,6 +63,11 @@ Route::post('/rooms/distribution/stop', [RoomController::class, 'stopDistributio
 Route::post('/rooms/distribution/fallback', [RoomController::class, 'fallbackDistribution'])->name('rooms.distribution.fallback');
 Route::get('/rooms/dissociate/{schoolclass}', [RoomController::class, 'dissociate'])->name('rooms.dissociate');
 Route::resource('rooms', RoomController::class);
+
+Route::get('/allocation-states', [AllocationStateController::class, 'index'])->name('allocation-states.index');
+Route::post('/allocation-states', [AllocationStateController::class, 'store'])->name('allocation-states.store');
+Route::post('/allocation-states/{state}/restore', [AllocationStateController::class, 'restore'])->name('allocation-states.restore');
+Route::delete('/allocation-states/{state}', [AllocationStateController::class, 'destroy'])->name('allocation-states.destroy');
 
 Route::get('/fusions/disjoint/{schoolclass}', [FusionController::class, 'disjoint'])->name('fusions.disjoint');
 Route::resource('fusions', FusionController::class);
