@@ -39,6 +39,15 @@ class RoomAllocationPayloadBuilder
 
         $groups = $this->resolveGroups($canonical, $validSuffixes);
 
+        // Once a group has a manual allocation, it must not be forced into a
+        // same-room cohort anymore; the manual room takes precedence.
+        foreach ($groups as &$group) {
+            if ($group['preassigned_room_id'] !== null) {
+                $group['same_room_cohort'] = null;
+            }
+        }
+        unset($group);
+
         $timeslots = $this->buildTimeslotCatalog($groups);
 
         $timeslotIndexMap = [];
