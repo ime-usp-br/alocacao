@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\SchoolTerm;
+use App\Models\SolverLog;
 use App\Services\RoomAllocationPayloadBuilder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -117,6 +118,15 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
             $this->schoolTermId,
             now()->addHours(4)
         );
+
+        // Persist the payload for later debugging via admin view
+        SolverLog::create([
+            'school_term_id' => $this->schoolTermId,
+            'job_id' => $jobId,
+            'payload' => $payload,
+            'status' => 'solving',
+            'dispatched_at' => now(),
+        ]);
 
         Log::info('ProcessRoomDistribution: job dispatched successfully', [
             'school_term_id' => $this->schoolTermId,

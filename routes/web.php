@@ -13,6 +13,7 @@ use App\Http\Controllers\ObservationController;
 use App\Http\Controllers\CourseInformationController;
 use App\Http\Controllers\CurriculumController;
 use App\Http\Controllers\SpecialOfferController;
+use App\Http\Controllers\SolverLogController;
 
 /*
 |--------------------------------------------------------------------------
@@ -89,3 +90,5 @@ Route::get("curriculum/{course}/semesters", [CurriculumController::class, "semes
 Route::get("curriculum", [CurriculumController::class, "index"])->name("curriculum.index");
 
 Route::resource("specialoffers", SpecialOfferController::class);
+
+Route::resource('solverlogs', SolverLogController::class)->only(['index', 'show']);

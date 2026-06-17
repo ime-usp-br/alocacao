@@ -86,6 +86,11 @@
                     </ul>
                 </li>
             @endcan
+            @if(Auth::check() && Auth::user()->hasRole('Administrador'))
+                <li>
+                    <a href="{{ route('solverlogs.index') }}">Logs Solver</a>
+                </li>
+            @endif
             <li>
                 <form style="padding:0px;" action="{{ route('logout') }}" method="POST" id="logout_form2">
                     @csrf

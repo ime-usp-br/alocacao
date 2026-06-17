@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SchoolClass;
+use App\Models\SolverLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +67,12 @@ class AllocationResultWebhookController extends Controller
             $activeJob['message'] = 'Erro no solver';
             $activeJob['finished_at'] = now()->toIso8601String();
             Cache::put($cacheKey, $activeJob, now()->addHours(4));
+
+            SolverLog::where('job_id', $jobId)->update([
+                'response' => $validated,
+                'status' => $status,
+                'responded_at' => now(),
+            ]);
 
             Log::error('AllocationResultWebhook: solver reported error', [
                 'job_id' => $jobId,
@@ -137,6 +144,15 @@ class AllocationResultWebhookController extends Controller
         $activeJob['unassigned_count'] = count($unassignedGroups) - $manualCount;
         $activeJob['manual_count'] = $manualCount;
         Cache::put($cacheKey, $activeJob, now()->addHours(4));
+
+        SolverLog::where('job_id', $jobId)->update([
+            'response' => $validated,
+            'status' => $status,
+            'allocations_count' => $autoCount,
+            'unassigned_count' => count($unassignedGroups) - $manualCount,
+            'manual_count' => $manualCount,
+            'responded_at' => now(),
+        ]);
 
         Log::info('AllocationResultWebhook: results applied successfully', [
             'job_id' => $jobId,
