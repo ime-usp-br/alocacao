@@ -290,84 +290,108 @@ $tooltips = [
 <div class="modal fade" id="solverConfigModal" tabindex="-1" role="dialog" aria-labelledby="solverConfigModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="solverConfigModalLabel">Configuração do Solver</h5>
+            <div class="modal-header bg-light">
+                <h5 class="modal-title font-weight-bold" id="solverConfigModalLabel">Configuração do Solver</h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <ul class="nav nav-tabs" id="solverConfigTabs" role="tablist">
+                <p class="text-muted small mb-3">
+                    Ajuste os parâmetros abaixo para esta execução do solver. Os valores não serão salvos no servidor.
+                </p>
+
+                <ul class="nav nav-tabs nav-fill" id="solverConfigTabs" role="tablist">
                     <li class="nav-item">
-                        <a class="nav-link active" id="tab-hard-link" data-toggle="tab" href="#tab-hard" role="tab">Hard Constraints</a>
+                        <a class="nav-link active font-weight-bold" id="tab-hard-link" data-toggle="tab" href="#tab-hard" role="tab">Hard Constraints</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" id="tab-soft-link" data-toggle="tab" href="#tab-soft" role="tab">Soft Constraints</a>
+                        <a class="nav-link font-weight-bold" id="tab-soft-link" data-toggle="tab" href="#tab-soft" role="tab">Soft Constraints</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" id="tab-estimativa-link" data-toggle="tab" href="#tab-estimativa" role="tab">Estimativa 1º Sem</a>
+                        <a class="nav-link font-weight-bold" id="tab-estimativa-link" data-toggle="tab" href="#tab-estimativa" role="tab">Estimativa 1º Sem</a>
                     </li>
                 </ul>
 
-                <div class="tab-content mt-3">
+                <div class="tab-content p-3 border border-top-0 rounded-bottom">
                     <!-- Aba 1 - Hard Constraints -->
                     <div class="tab-pane fade show active" id="tab-hard" role="tabpanel">
-                        @foreach ([
-                            'strict_capacity' => 'Capacidade Estrita',
-                            'block_b_restriction_for_pos' => 'Restrição Bloco B p/ Pós',
-                            'block_a_restriction_for_freshmen' => 'Restrição Bloco A p/ Calouros',
-                        ] as $key => $label)
-                            <div class="form-group">
-                                <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
-                                <select name="solver_config[{{ $key }}]" class="form-control" form="distributesForm">
-                                    <option value="1" {{ config('alocacao.room_allocation.' . $key) ? 'selected' : '' }}>Sim</option>
-                                    <option value="0" {{ ! config('alocacao.room_allocation.' . $key) ? 'selected' : '' }}>Não</option>
-                                </select>
-                            </div>
-                        @endforeach
+                        <div class="row">
+                            @foreach ([
+                                'strict_capacity' => 'Capacidade Estrita',
+                                'block_b_restriction_for_pos' => 'Restrição Bloco B p/ Pós',
+                                'block_a_restriction_for_freshmen' => 'Restrição Bloco A p/ Calouros',
+                            ] as $key => $label)
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <div class="custom-control custom-switch">
+                                            <input type="hidden" name="solver_config[{{ $key }}]" value="0" form="distributesForm">
+                                            <input type="checkbox" class="custom-control-input" id="solver_config_{{ $key }}"
+                                                name="solver_config[{{ $key }}]" value="1"
+                                                form="distributesForm"
+                                                {{ config('alocacao.room_allocation.' . $key) ? 'checked' : '' }}>
+                                            <label class="custom-control-label" for="solver_config_{{ $key }}"
+                                                data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">
+                                                {{ $label }}
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
 
                     <!-- Aba 2 - Soft Constraints -->
                     <div class="tab-pane fade" id="tab-soft" role="tabpanel">
-                        @foreach ([
-                            'undergrad_in_block_a_penalty' => 'Penalidade Graduação Bloco A',
-                            'pos_in_block_b_penalty' => 'Penalidade Pós Bloco B',
-                            'wasted_seats_weight' => 'Peso Assentos Ociosos',
-                            'unassigned_penalty' => 'Penalidade Turma sem Sala',
-                            'priority_weight' => 'Peso de Prioridade',
-                        ] as $key => $label)
-                            <div class="form-group">
-                                <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
-                                <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.room_allocation.' . $key) }}" form="distributesForm">
-                            </div>
-                        @endforeach
+                        <div class="row">
+                            @foreach ([
+                                'undergrad_in_block_a_penalty' => 'Penalidade Graduação Bloco A',
+                                'pos_in_block_b_penalty' => 'Penalidade Pós Bloco B',
+                                'wasted_seats_weight' => 'Peso Assentos Ociosos',
+                                'unassigned_penalty' => 'Penalidade Turma sem Sala',
+                                'priority_weight' => 'Peso de Prioridade',
+                            ] as $key => $label)
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                        <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.room_allocation.' . $key) }}" form="distributesForm">
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
 
                     <!-- Aba 3 - Estimativa 1º Sem -->
                     <div class="tab-pane fade" id="tab-estimativa" role="tabpanel">
-                        <div class="form-group">
-                            <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips['historical_estimation_method'] }}">Método</label>
-                            <select name="solver_config[historical_estimation_method]" class="form-control" form="distributesForm">
-                                <option value="average_plus_stddev" {{ config('alocacao.historical_estimation_method') === 'average_plus_stddev' ? 'selected' : '' }}>average_plus_stddev</option>
-                                <option value="none" {{ config('alocacao.historical_estimation_method') === 'none' ? 'selected' : '' }}>none</option>
-                            </select>
-                        </div>
-                        @foreach ([
-                            'historical_threshold_percent' => 'Threshold %',
-                            'historical_lookback_years' => 'Anos de Lookback',
-                            'historical_min_years' => 'Mínimo de Anos',
-                            'historical_cap' => 'Limite/Cap',
-                            'historical_stddev_multiplier' => 'Multiplicador DP',
-                        ] as $key => $label)
-                            <div class="form-group">
-                                <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
-                                <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.' . $key) }}" form="distributesForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips['historical_estimation_method'] }}">Método</label>
+                                    <select name="solver_config[historical_estimation_method]" class="form-control" form="distributesForm">
+                                        <option value="average_plus_stddev" {{ config('alocacao.historical_estimation_method') === 'average_plus_stddev' ? 'selected' : '' }}>average_plus_stddev</option>
+                                        <option value="none" {{ config('alocacao.historical_estimation_method') === 'none' ? 'selected' : '' }}>none</option>
+                                    </select>
+                                </div>
                             </div>
-                        @endforeach
+                            @foreach ([
+                                'historical_threshold_percent' => 'Threshold %',
+                                'historical_lookback_years' => 'Anos de Lookback',
+                                'historical_min_years' => 'Mínimo de Anos',
+                                'historical_cap' => 'Limite/Cap',
+                                'historical_stddev_multiplier' => 'Multiplicador DP',
+                            ] as $key => $label)
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                        <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.' . $key) }}" form="distributesForm">
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer bg-light">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
                 <button type="submit" form="distributesForm" class="btn btn-primary"
                     onclick="return confirm('Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!')">
