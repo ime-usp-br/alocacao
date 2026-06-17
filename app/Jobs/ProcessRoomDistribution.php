@@ -22,6 +22,7 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
 
     public int $schoolTermId;
     public array $roomIds;
+    public array $solverConfig;
 
     public int $timeout = 60;
     public int $tries = 3;
@@ -30,10 +31,11 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     /**
      * Create a new job instance.
      */
-    public function __construct(int $schoolTermId, array $roomIds)
+    public function __construct(int $schoolTermId, array $roomIds, array $solverConfig = [])
     {
         $this->schoolTermId = $schoolTermId;
         $this->roomIds = $roomIds;
+        $this->solverConfig = $solverConfig;
     }
 
     /**
@@ -51,7 +53,7 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     {
         $term = SchoolTerm::findOrFail($this->schoolTermId);
 
-        $payload = (new RoomAllocationPayloadBuilder())->build($term, $this->roomIds);
+        $payload = (new RoomAllocationPayloadBuilder())->build($term, $this->roomIds, $this->solverConfig);
 
         $solverUrl = rtrim(config('alocacao.solver.url'), '/');
         $apiToken = config('alocacao.solver.api_token');

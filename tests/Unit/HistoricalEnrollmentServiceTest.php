@@ -401,4 +401,60 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $this->assertTrue($result['applied']);
         $this->assertEquals(50, $result['demand']); // 50 + 3*0
     }
+
+    /** @test */
+    public function it_accepts_config_overrides_in_constructor()
+    {
+        config(['alocacao.historical_threshold_percent' => 7.0]);
+        config(['alocacao.historical_cap' => 100]);
+        config(['alocacao.historical_lookback_years' => 5]);
+
+        $service = new HistoricalEnrollmentService([
+            'historical_threshold_percent' => 15.0,
+            'historical_cap' => 80,
+            'historical_lookback_years' => 3,
+        ]);
+
+        $reflection = new \ReflectionClass($service);
+
+        $thresholdProperty = $reflection->getProperty('thresholdPercent');
+        $thresholdProperty->setAccessible(true);
+        $threshold = $thresholdProperty->getValue($service);
+
+        $capProperty = $reflection->getProperty('cap');
+        $capProperty->setAccessible(true);
+        $cap = $capProperty->getValue($service);
+
+        $lookbackProperty = $reflection->getProperty('yearsToLookBack');
+        $lookbackProperty->setAccessible(true);
+        $lookback = $lookbackProperty->getValue($service);
+
+        $this->assertEquals(15.0, $threshold);
+        $this->assertEquals(80, $cap);
+        $this->assertEquals(3, $lookback);
+    }
+
+    /** @test */
+    public function it_falls_back_to_config_when_overrides_are_missing()
+    {
+        config(['alocacao.historical_threshold_percent' => 12.0]);
+        config(['alocacao.historical_cap' => 120]);
+
+        $service = new HistoricalEnrollmentService([
+            'historical_cap' => 90,
+        ]);
+
+        $reflection = new \ReflectionClass($service);
+
+        $thresholdProperty = $reflection->getProperty('thresholdPercent');
+        $thresholdProperty->setAccessible(true);
+        $threshold = $thresholdProperty->getValue($service);
+
+        $capProperty = $reflection->getProperty('cap');
+        $capProperty->setAccessible(true);
+        $cap = $capProperty->getValue($service);
+
+        $this->assertEquals(12.0, $threshold);
+        $this->assertEquals(90, $cap);
+    }
 }

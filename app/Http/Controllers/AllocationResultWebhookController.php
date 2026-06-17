@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AllocationState;
 use App\Models\SchoolClass;
+use App\Models\SchoolTerm;
 use App\Models\SolverLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -136,9 +138,11 @@ class AllocationResultWebhookController extends Controller
             );
         }
 
+        $comparisonMessage = $this->buildComparisonMessage($jobId, $schoolTermId);
+
         $activeJob['status'] = 'completed';
         $activeJob['progress'] = 100;
-        $activeJob['message'] = 'Distribuição concluída';
+        $activeJob['message'] = $comparisonMessage ?? 'Distribuição concluída';
         $activeJob['finished_at'] = now()->toIso8601String();
         $activeJob['assignments_count'] = $autoCount;
         $activeJob['unassigned_count'] = count($unassignedGroups) - $manualCount;
@@ -163,6 +167,63 @@ class AllocationResultWebhookController extends Controller
         ]);
 
         return response()->json(['message' => 'Results applied'], 200);
+    }
+
+    /**
+     * Build a rich comparison message between the pre-solver allocation state
+     * and the current state after the solver result has been applied.
+     */
+    private function buildComparisonMessage(string $jobId, int $schoolTermId): ?string
+    {
+        $solverLog = SolverLog::where('job_id', $jobId)->first();
+
+        if (! $solverLog) {
+            return null;
+        }
+
+        $preState = AllocationState::where('solver_log_id', $solverLog->id)
+            ->where('school_term_id', $schoolTermId)
+            ->latest()
+            ->first();
+
+        if (! $preState) {
+            return null;
+        }
+
+        $preAllocations = $preState->allocations ?? [];
+
+        $currentClasses = SchoolClass::whereBelongsTo(SchoolTerm::find($schoolTermId))
+            ->where('externa', false)
+            ->get()
+            ->keyBy('id');
+
+        $newAllocations = 0;
+        $changedRooms = 0;
+
+        foreach ($currentClasses as $id => $schoolClass) {
+            $currentRoomId = $schoolClass->room_id;
+            $previousRoomId = $preAllocations[$id] ?? null;
+
+            if ($previousRoomId === null && $currentRoomId !== null) {
+                $newAllocations++;
+            } elseif ($previousRoomId !== null && $currentRoomId !== null && (int) $previousRoomId !== (int) $currentRoomId) {
+                $changedRooms++;
+            }
+        }
+
+        if ($newAllocations === 0 && $changedRooms === 0) {
+            return 'Distribuição concluída: nenhuma alteração em relação ao estado pré-solver.';
+        }
+
+        $parts = [];
+        if ($newAllocations > 0) {
+            $parts[] = "{$newAllocations} turma(s) nova(s) foi(ram) alocada(s)";
+        }
+        if ($changedRooms > 0) {
+            $parts[] = "{$changedRooms} turma(s) mudou(aram) de sala";
+        }
+
+        return 'Distribuição concluída: ' . implode(', ', $parts) . '.';
     }
 
     /**

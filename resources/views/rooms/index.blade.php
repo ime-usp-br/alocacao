@@ -30,18 +30,20 @@
                             </form>
                             -->
                             
-                            <form id="distributesForm" style="display: inline;"action="{{ route('rooms.distributes') }}" method="POST"
+                            <button class="btn btn-outline-primary"
+                                id="btn-distributes"
+                                type="button"
+                                data-toggle="modal"
+                                data-target="#solverConfigModal"
+                            >
+                                Distribuir Turmas
+                            </button>
+
+                            <form id="distributesForm" style="display: none;" action="{{ route('rooms.distributes') }}" method="POST"
                             enctype="multipart/form-data"
                             >
                                 @method('patch')
                                 @csrf
-                                <button  class="btn btn-outline-primary"
-                                    id="btn-distributes"
-                                    type="submit"
-                                    onclick="return confirm('Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!')" 
-                                >
-                                    Distribuir Turmas
-                                </button>
                             </form>
 
                             <form id="emptyForm" style="display: inline;" action="{{ route('rooms.empty') }}" method="POST"
@@ -260,6 +262,117 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@php
+$tooltips = [
+    'strict_capacity' => 'Quando ativada, o solver não pode alocar turmas em salas com capacidade menor que a demanda.',
+    'block_b_restriction_for_pos' => 'Quando ativada, pós-graduação não pode ser alocada no Bloco B.',
+    'block_a_restriction_for_freshmen' => 'Quando ativada, calouros do IME devem ser alocados no Bloco A.',
+    'undergrad_in_block_a_penalty' => 'Penalidade aplicada ao alocar graduação no Bloco A (deveria ser preferencialmente no Bloco B).',
+    'pos_in_block_b_penalty' => 'Penalidade aplicada ao alocar pós-graduação no Bloco B (deveria ser preferencialmente no Bloco A).',
+    'wasted_seats_weight' => 'Peso dado ao número de assentos ociosos nas salas alocadas.',
+    'unassigned_penalty' => 'Penalidade por cada turma que ficar sem sala na solução.',
+    'priority_weight' => 'Peso dado às prioridades explícitas de sala/turma.',
+    'historical_estimation_method' => 'Método usado para estimar demanda a partir do histórico de matriculados.',
+    'historical_threshold_percent' => 'Diferença percentual mínima entre inscritos atuais e média histórica para ativar a correção.',
+    'historical_lookback_years' => 'Quantidade de anos anteriores consultados no cálculo da média histórica.',
+    'historical_min_years' => 'Número mínimo de anos históricos com dados para considerar a estimativa confiável.',
+    'historical_cap' => 'Teto máximo para a demanda estimada.',
+    'historical_stddev_multiplier' => 'Multiplicador do desvio padrão somado à média no método average_plus_stddev.',
+];
+@endphp
+
+<!-- Modal de Configuração do Solver -->
+<div class="modal fade" id="solverConfigModal" tabindex="-1" role="dialog" aria-labelledby="solverConfigModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="solverConfigModalLabel">Configuração do Solver</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Fechar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" id="solverConfigTabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="tab-hard-link" data-toggle="tab" href="#tab-hard" role="tab">Hard Constraints</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="tab-soft-link" data-toggle="tab" href="#tab-soft" role="tab">Soft Constraints</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="tab-estimativa-link" data-toggle="tab" href="#tab-estimativa" role="tab">Estimativa 1º Sem</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content mt-3">
+                    <!-- Aba 1 - Hard Constraints -->
+                    <div class="tab-pane fade show active" id="tab-hard" role="tabpanel">
+                        @foreach ([
+                            'strict_capacity' => 'Capacidade Estrita',
+                            'block_b_restriction_for_pos' => 'Restrição Bloco B p/ Pós',
+                            'block_a_restriction_for_freshmen' => 'Restrição Bloco A p/ Calouros',
+                        ] as $key => $label)
+                            <div class="form-group">
+                                <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                <select name="solver_config[{{ $key }}]" class="form-control" form="distributesForm">
+                                    <option value="1" {{ config('alocacao.room_allocation.' . $key) ? 'selected' : '' }}>Sim</option>
+                                    <option value="0" {{ ! config('alocacao.room_allocation.' . $key) ? 'selected' : '' }}>Não</option>
+                                </select>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <!-- Aba 2 - Soft Constraints -->
+                    <div class="tab-pane fade" id="tab-soft" role="tabpanel">
+                        @foreach ([
+                            'undergrad_in_block_a_penalty' => 'Penalidade Graduação Bloco A',
+                            'pos_in_block_b_penalty' => 'Penalidade Pós Bloco B',
+                            'wasted_seats_weight' => 'Peso Assentos Ociosos',
+                            'unassigned_penalty' => 'Penalidade Turma sem Sala',
+                            'priority_weight' => 'Peso de Prioridade',
+                        ] as $key => $label)
+                            <div class="form-group">
+                                <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.room_allocation.' . $key) }}" form="distributesForm">
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <!-- Aba 3 - Estimativa 1º Sem -->
+                    <div class="tab-pane fade" id="tab-estimativa" role="tabpanel">
+                        <div class="form-group">
+                            <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips['historical_estimation_method'] }}">Método</label>
+                            <select name="solver_config[historical_estimation_method]" class="form-control" form="distributesForm">
+                                <option value="average_plus_stddev" {{ config('alocacao.historical_estimation_method') === 'average_plus_stddev' ? 'selected' : '' }}>average_plus_stddev</option>
+                                <option value="none" {{ config('alocacao.historical_estimation_method') === 'none' ? 'selected' : '' }}>none</option>
+                            </select>
+                        </div>
+                        @foreach ([
+                            'historical_threshold_percent' => 'Threshold %',
+                            'historical_lookback_years' => 'Anos de Lookback',
+                            'historical_min_years' => 'Mínimo de Anos',
+                            'historical_cap' => 'Limite/Cap',
+                            'historical_stddev_multiplier' => 'Multiplicador DP',
+                        ] as $key => $label)
+                            <div class="form-group">
+                                <label data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.' . $key) }}" form="distributesForm">
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                <button type="submit" form="distributesForm" class="btn btn-primary"
+                    onclick="return confirm('Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!')">
+                    Executar Solver
+                </button>
             </div>
         </div>
     </div>
@@ -510,6 +623,12 @@ $( function() {
 
     $('#allocationStatesModal').on('shown.bs.modal', function () {
         loadAllocationStates();
+    });
+
+    $('#solverConfigModal').on('shown.bs.modal', function () {
+        $(this).find('[data-toggle="tooltip"]').tooltip();
+    }).on('hidden.bs.modal', function () {
+        $(this).find('[data-toggle="tooltip"]').tooltip('dispose');
     });
 });
 </script>

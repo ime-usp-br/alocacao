@@ -49,6 +49,11 @@ class HistoricalEnrollmentService
     private int $cap = 100;
 
     /**
+     * Número de anos anteriores a consultar no cálculo da média histórica.
+     */
+    private int $yearsToLookBack = 5;
+
+    /**
      * Palavras-chave em obstur que indicam turmas especiais e devem ser excluídas.
      */
     private array $exclusionObsturKeywords = [
@@ -61,13 +66,20 @@ class HistoricalEnrollmentService
         'divididas',
     ];
 
-    public function __construct()
+    public function __construct(array $configOverrides = [])
     {
-        $this->thresholdPercent = (float) config('alocacao.historical_threshold_percent', 7.0);
-        $this->minHistoricalYears = (int) config('alocacao.historical_min_years', 2);
-        $this->estimationMethod = (string) config('alocacao.historical_estimation_method', 'average_plus_stddev');
-        $this->stddevMultiplier = (float) config('alocacao.historical_stddev_multiplier', 3.0);
-        $this->cap = (int) config('alocacao.historical_cap', 100);
+        $this->thresholdPercent = (float) ($configOverrides['historical_threshold_percent']
+            ?? config('alocacao.historical_threshold_percent', 7.0));
+        $this->minHistoricalYears = (int) ($configOverrides['historical_min_years']
+            ?? config('alocacao.historical_min_years', 2));
+        $this->estimationMethod = (string) ($configOverrides['historical_estimation_method']
+            ?? config('alocacao.historical_estimation_method', 'average_plus_stddev'));
+        $this->stddevMultiplier = (float) ($configOverrides['historical_stddev_multiplier']
+            ?? config('alocacao.historical_stddev_multiplier', 3.0));
+        $this->cap = (int) ($configOverrides['historical_cap']
+            ?? config('alocacao.historical_cap', 100));
+        $this->yearsToLookBack = (int) ($configOverrides['historical_lookback_years']
+            ?? config('alocacao.historical_lookback_years', 5));
     }
 
     /**
@@ -441,9 +453,8 @@ class HistoricalEnrollmentService
     private function fetchHistoricalEnrollments(string $coddis, string $codturSuffix, int $currentYear): array
     {
         $results = [];
-        $yearsToLookBack = (int) config('alocacao.historical_lookback_years', 5);
 
-        for ($offset = 1; $offset <= $yearsToLookBack; $offset++) {
+        for ($offset = 1; $offset <= $this->yearsToLookBack; $offset++) {
             $year = $currentYear - $offset;
             $codtur = $year . '1' . $codturSuffix;
 

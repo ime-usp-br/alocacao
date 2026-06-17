@@ -63,6 +63,69 @@ class DistributionFlowTest extends TestCase
     }
 
     /** @test */
+    public function operator_can_dispatch_distribution_with_solver_config_overrides()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+        ]);
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response([
+                'job_id' => 'flow-config-123',
+            ], 202),
+        ]);
+
+        $response = $this->actingAsOperator()
+            ->patch('/rooms/distributes', [
+                'rooms_id' => [$room->id],
+                'solver_config' => [
+                    'strict_capacity' => false,
+                    'unassigned_penalty' => 2000.0,
+                    'historical_estimation_method' => 'none',
+                ],
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('alert-info');
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertNotNull($cached);
+        $this->assertEquals('flow-config-123', $cached['job_id']);
+
+        $solverLog = \App\Models\SolverLog::where('job_id', 'flow-config-123')->first();
+        $this->assertNotNull($solverLog);
+        $this->assertFalse($solverLog->payload['config']['strict_capacity']);
+        $this->assertEquals(2000.0, $solverLog->payload['config']['unassigned_penalty']);
+        $this->assertEquals('none', $solverLog->payload['config']['historical_estimation_method']);
+    }
+
+    /** @test */
+    public function distributes_request_rejects_invalid_solver_config()
+    {
+        $room = Room::factory()->create();
+
+        $response = $this->actingAsOperator()
+            ->patch('/rooms/distributes', [
+                'rooms_id' => [$room->id],
+                'solver_config' => [
+                    'historical_estimation_method' => 'invalid_method',
+                    'historical_lookback_years' => -1,
+                ],
+            ]);
+
+        $response->assertSessionHasErrors([
+            'solver_config.historical_estimation_method',
+            'solver_config.historical_lookback_years',
+        ]);
+    }
+
+    /** @test */
     public function double_dispatch_is_prevented()
     {
         $term = SchoolTerm::factory()->create();
@@ -243,5 +306,72 @@ class DistributionFlowTest extends TestCase
 
         $response->assertRedirect();
         $response->assertSessionHas('alert-warning');
+    }
+
+    /** @test */
+    public function result_webhook_generates_comparison_message()
+    {
+        $term = SchoolTerm::factory()->create();
+        $roomA = Room::factory()->create();
+        $roomB = Room::factory()->create();
+
+        $classNew = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+        ]);
+        $classChanged = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $roomA->id,
+            'externa' => false,
+        ]);
+        $classUnchanged = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $roomA->id,
+            'externa' => false,
+        ]);
+
+        $solverLog = \App\Models\SolverLog::factory()->create([
+            'school_term_id' => $term->id,
+            'job_id' => 'compare-123',
+            'status' => 'solving',
+        ]);
+
+        \App\Models\AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Pré-Solver',
+            'solver_log_id' => $solverLog->id,
+            'allocations' => [
+                $classNew->id => null,
+                $classChanged->id => $roomA->id,
+                $classUnchanged->id => $roomA->id,
+            ],
+        ]);
+
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'compare-123',
+            'status' => 'solving',
+            'progress' => 50,
+        ], now()->addHour());
+
+        Cache::put("allocation:job:compare-123", $term->id, now()->addHour());
+
+        $response = $this->postJson('/api/webhooks/allocation-result', [
+            'job_id' => 'compare-123',
+            'status' => 'optimal',
+            'allocations' => [
+                ['group_id' => $classNew->id, 'room_id' => $roomB->id],
+                ['group_id' => $classChanged->id, 'room_id' => $roomB->id],
+                ['group_id' => $classUnchanged->id, 'room_id' => $roomA->id],
+            ],
+            'unassigned_groups' => [],
+            'suggestions' => [],
+        ]);
+
+        $response->assertOk();
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertStringContainsString('1 turma(s) nova(s) foi(ram) alocada(s)', $cached['message']);
+        $this->assertStringContainsString('1 turma(s) mudou(aram) de sala', $cached['message']);
     }
 }
