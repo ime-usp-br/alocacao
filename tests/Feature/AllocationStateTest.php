@@ -206,6 +206,41 @@ class AllocationStateTest extends TestCase
     }
 
     /** @test */
+    public function restore_does_not_count_external_classes_as_unassigned()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $existingClass = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $room->id,
+        ]);
+
+        $state = \App\Models\AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'External Save',
+            'allocations' => [$existingClass->id => $room->id],
+        ]);
+
+        SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+        ]);
+
+        SchoolClass::factory()->external()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+        ]);
+
+        $response = $this->actingAsOperator()->post("/allocation-states/{$state->id}/restore");
+
+        $response->assertSessionHas('alert-info', function ($message) {
+            return str_contains($message, '1 novas turmas ficaram sem sala');
+        });
+    }
+
+    /** @test */
     public function restore_warns_about_missing_classes_and_unassigned_classes()
     {
         $term = SchoolTerm::factory()->create();

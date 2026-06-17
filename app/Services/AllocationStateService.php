@@ -72,7 +72,10 @@ class AllocationStateService
             }
         }
 
-        $unassignedCount = SchoolClass::whereBelongsTo($term)->whereNull('room_id')->count();
+        $unassignedCount = SchoolClass::whereBelongsTo($term)
+            ->where('externa', false)
+            ->whereNull('room_id')
+            ->count();
 
         return [
             'missing' => $missingCount,
