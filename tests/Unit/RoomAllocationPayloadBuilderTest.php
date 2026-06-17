@@ -652,6 +652,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
             'tiptur' => 'Graduação',
             'externa' => false,
             'fusion_id' => null,
+            'room_id' => null,
         ]);
 
         $class->courseinformations()->attach($courseInfo);
@@ -818,6 +819,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
             'tiptur' => 'Graduação',
             'externa' => false,
             'fusion_id' => $fusion->id,
+            'room_id' => null,
         ]);
         $classA->courseinformations()->attach($courseInfo);
 
@@ -827,6 +829,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
             'tiptur' => 'Graduação',
             'externa' => false,
             'fusion_id' => $fusion->id,
+            'room_id' => null,
         ]);
 
         $schedule = ClassSchedule::factory()->seg()->morning()->create();
@@ -839,6 +842,44 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $group = $payload['groups'][0];
         $this->assertTrue($group['is_freshmen']);
         $this->assertEquals('cohort_45_sem_2', $group['same_room_cohort']);
+    }
+
+    /** @test */
+    public function it_removes_manual_class_from_same_room_cohort()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $course = \App\Models\Course::factory()->create([
+            'sufixo_codtur' => '45',
+        ]);
+
+        $courseInfo = \App\Models\CourseInformation::factory()->create([
+            'tipobg' => 'O',
+            'numsemidl' => '1',
+        ]);
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '202445',
+            'tiptur' => 'Graduação',
+            'externa' => false,
+            'fusion_id' => null,
+            'room_id' => $room->id,
+        ]);
+
+        $class->courseinformations()->attach($courseInfo);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertNull($group['same_room_cohort']);
+        $this->assertEquals($room->id, $group['preassigned_room_id']);
+        $this->assertTrue($group['is_freshmen']);
     }
 
     /** @test */

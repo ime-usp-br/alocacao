@@ -73,6 +73,76 @@ class AllocationWebhookTest extends TestCase
     }
 
     /** @test */
+    public function progress_webhook_ignores_stale_lower_progress()
+    {
+        $term = SchoolTerm::factory()->create();
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'job-123',
+            'status' => 'solving',
+            'progress' => 70,
+        ], now()->addHour());
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-progress', [
+            'job_id' => 'job-123',
+            'progress' => 15,
+            'message' => 'Passo 1...',
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['message' => 'Ignored. Stale progress.']);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals(70, $cached['progress']);
+    }
+
+    /** @test */
+    public function progress_webhook_ignores_obsolete_jobs()
+    {
+        $term = SchoolTerm::factory()->create();
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'new-job',
+            'status' => 'solving',
+            'progress' => 50,
+        ], now()->addHour());
+
+        // Simulate stale secondary index mapping old job to the same term
+        Cache::put("allocation:job:old-job", $term->id, now()->addHour());
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-progress', [
+            'job_id' => 'old-job',
+            'progress' => 80,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['message' => 'Ignored. Obsolete job.']);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals(50, $cached['progress']);
+    }
+
+    /** @test */
+    public function progress_webhook_ignores_progress_after_terminal_status()
+    {
+        $term = SchoolTerm::factory()->create();
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'job-123',
+            'status' => 'completed',
+            'progress' => 100,
+        ], now()->addHour());
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-progress', [
+            'job_id' => 'job-123',
+            'progress' => 85,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['message' => 'Ignored. Stale progress.']);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals(100, $cached['progress']);
+    }
+
+    /** @test */
     public function result_webhook_applies_assignments_atomically()
     {
         $term = SchoolTerm::factory()->create();

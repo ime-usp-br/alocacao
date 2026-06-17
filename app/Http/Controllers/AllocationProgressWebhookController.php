@@ -45,6 +45,33 @@ class AllocationProgressWebhookController extends Controller
             return response()->json(['message' => 'Job not found'], 404);
         }
 
+        // Idempotency / zombie guard: ignore progress for obsolete jobs
+        if (($existing['job_id'] ?? null) !== $jobId) {
+            Log::warning('AllocationProgressWebhook: ignoring obsolete progress', [
+                'job_id' => $jobId,
+                'school_term_id' => $schoolTermId,
+            ]);
+
+            return response()->json(['message' => 'Ignored. Obsolete job.'], 200);
+        }
+
+        // Ignore out-of-order progress updates and terminal statuses
+        $terminalStatuses = ['completed', 'error'];
+        $isTerminal = in_array($existing['status'] ?? '', $terminalStatuses, true);
+        $currentProgress = $existing['progress'] ?? 0;
+
+        if ($isTerminal || $progress < $currentProgress) {
+            Log::info('AllocationProgressWebhook: ignoring stale progress', [
+                'job_id' => $jobId,
+                'school_term_id' => $schoolTermId,
+                'received_progress' => $progress,
+                'current_progress' => $currentProgress,
+                'current_status' => $existing['status'] ?? 'unknown',
+            ]);
+
+            return response()->json(['message' => 'Ignored. Stale progress.'], 200);
+        }
+
         $existing['progress'] = $progress;
         $existing['message'] = $message;
         $existing['status'] = $progress >= 100 ? 'completed' : 'solving';
