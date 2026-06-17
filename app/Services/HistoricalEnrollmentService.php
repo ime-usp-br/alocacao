@@ -34,6 +34,21 @@ class HistoricalEnrollmentService
     private int $minHistoricalYears = 2;
 
     /**
+     * Método de estimativa de demanda para o payload do solver.
+     */
+    private string $estimationMethod = 'average_plus_stddev';
+
+    /**
+     * Multiplicador do desvio padrão quando estimationMethod = 'average_plus_stddev'.
+     */
+    private float $stddevMultiplier = 3.0;
+
+    /**
+     * Teto máximo para a estimativa histórica de demanda.
+     */
+    private int $cap = 100;
+
+    /**
      * Palavras-chave em obstur que indicam turmas especiais e devem ser excluídas.
      */
     private array $exclusionObsturKeywords = [
@@ -50,6 +65,9 @@ class HistoricalEnrollmentService
     {
         $this->thresholdPercent = (float) config('alocacao.historical_threshold_percent', 7.0);
         $this->minHistoricalYears = (int) config('alocacao.historical_min_years', 2);
+        $this->estimationMethod = (string) config('alocacao.historical_estimation_method', 'average_plus_stddev');
+        $this->stddevMultiplier = (float) config('alocacao.historical_stddev_multiplier', 3.0);
+        $this->cap = (int) config('alocacao.historical_cap', 100);
     }
 
     /**
@@ -105,6 +123,149 @@ class HistoricalEnrollmentService
             'average' => $result['average'],
             'samples' => $result['samples'],
             'years' => $result['years'],
+        ]);
+
+        return $result;
+    }
+
+    /**
+     * Calcula estatísticas históricas completas (média, DP, amostras, anos) para uma turma.
+     *
+     * @param string $coddis Código da disciplina
+     * @param string $codtur Código completo da turma (AAAASXX)
+     * @param int|null $currentYear Ano atual
+     * @return array{
+     *   average: float|null,
+     *   stddev: float|null,
+     *   samples: int,
+     *   years: int[]
+     * }
+     */
+    public function calculateHistoricalStats(string $coddis, string $codtur, ?int $currentYear = null): array
+    {
+        $result = [
+            'average' => null,
+            'stddev' => null,
+            'samples' => 0,
+            'years' => [],
+        ];
+
+        if (!$currentYear) {
+            $latestTerm = SchoolTerm::getLatest();
+            $currentYear = $latestTerm ? (int) $latestTerm->year : (int) date('Y');
+        }
+
+        $codturSuffix = substr($codtur, -2);
+        $historicalData = $this->fetchHistoricalEnrollments($coddis, $codturSuffix, $currentYear);
+
+        if (empty($historicalData)) {
+            return $result;
+        }
+
+        $enrollments = array_column($historicalData, 'total_matriculados');
+        $average = array_sum($enrollments) / count($enrollments);
+
+        $variance = 0.0;
+        if (count($enrollments) >= 2) {
+            $variance = array_sum(array_map(fn ($x) => pow($x - $average, 2), $enrollments)) / count($enrollments);
+        }
+        $stddev = sqrt($variance);
+
+        $result['average'] = round($average, 2);
+        $result['stddev'] = round($stddev, 2);
+        $result['samples'] = count($historicalData);
+        $result['years'] = array_column($historicalData, 'year');
+
+        return $result;
+    }
+
+    /**
+     * Calcula a demanda ajustada para o payload do solver sem alterar o banco de dados.
+     *
+     * Aplica a estimativa histórica apenas quando:
+     * - A turma é de 1º semestre obrigatório de graduação do IME;
+     * - Não possui observações especiais em obstur;
+     * - Há dados históricos suficientes;
+     * - O estmtr atual está subdimensionado em mais do que thresholdPercent.
+     *
+     * O método de estimativa é configurável. Para 'average_plus_stddev', usa
+     * min(média + (multiplicador * DP), cap). Outros métodos desativam o ajuste.
+     *
+     * @param SchoolClass $schoolClass
+     * @return array{
+     *   demand: int|null,
+     *   applied: bool,
+     *   metadata: array<string, mixed>|null
+     * }
+     */
+    public function calculateAdjustedDemand(SchoolClass $schoolClass): array
+    {
+        $result = [
+            'demand' => $schoolClass->estmtr,
+            'applied' => false,
+            'metadata' => null,
+        ];
+
+        // Só aplica para turmas de Graduação no 1º semestre
+        if (!$this->isFirstSemesterClass($schoolClass)) {
+            return $result;
+        }
+
+        // Ignora turmas com observações especiais
+        if ($this->hasSpecialObstur($schoolClass)) {
+            return $result;
+        }
+
+        $year = (int) substr($schoolClass->codtur, 0, 4);
+        $stats = $this->calculateHistoricalStats($schoolClass->coddis, $schoolClass->codtur, $year);
+
+        // Não aplica sem dados históricos suficientes
+        if ($stats['samples'] < $this->minHistoricalYears || $stats['average'] === null || $stats['average'] <= 0) {
+            return $result;
+        }
+
+        $currentEnrollment = $schoolClass->estmtr ?? 0;
+
+        // Só corrige subdimensionamento
+        $deviationPercent = (($stats['average'] - $currentEnrollment) / $stats['average']) * 100;
+        if ($deviationPercent <= $this->thresholdPercent) {
+            return $result;
+        }
+
+        // Se método não for o esperado, mantém estmtr
+        if ($this->estimationMethod !== 'average_plus_stddev') {
+            return $result;
+        }
+
+        $stddev = $stats['stddev'] ?? 0;
+        $estimatedDemand = (int) round($stats['average'] + ($stddev * $this->stddevMultiplier));
+        $estimatedDemand = min($estimatedDemand, $this->cap);
+
+        // Não aplica se a estimativa for menor que o atual (proteção extra)
+        if ($estimatedDemand <= $currentEnrollment) {
+            return $result;
+        }
+
+        $result['demand'] = $estimatedDemand;
+        $result['applied'] = true;
+        $result['metadata'] = [
+            'method' => $this->estimationMethod,
+            'average' => $stats['average'],
+            'stddev' => $stddev,
+            'stddev_multiplier' => $this->stddevMultiplier,
+            'cap' => $this->cap,
+            'current' => $currentEnrollment,
+            'deviation_percent' => round($deviationPercent, 2),
+            'threshold' => $this->thresholdPercent,
+            'years' => $stats['years'],
+            'samples' => $stats['samples'],
+        ];
+
+        Log::info('HistoricalEnrollmentService: calculated adjusted demand for payload', [
+            'coddis' => $schoolClass->coddis,
+            'codtur' => $schoolClass->codtur,
+            'old_estmtr' => $currentEnrollment,
+            'new_demand' => $estimatedDemand,
         ]);
 
         return $result;

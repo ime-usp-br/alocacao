@@ -213,7 +213,7 @@ class DistributionFlowTest extends TestCase
             'http://solver.test/api/v1/jobs/fallback-123/result' => Http::response([
                 'job_id' => 'fallback-123',
                 'status' => 'success',
-                'assignments' => [
+                'allocations' => [
                     ['group_id' => $class->id, 'room_id' => $room->id],
                 ],
                 'unassigned_groups' => [],

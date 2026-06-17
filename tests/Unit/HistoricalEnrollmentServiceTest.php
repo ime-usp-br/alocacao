@@ -267,4 +267,138 @@ class HistoricalEnrollmentServiceTest extends TestCase
         $this->assertEquals(40, $class->estmtr);
         $this->assertNull($class->historical_avg_applied_at);
     }
+
+    /** @test */
+    public function it_calculates_adjusted_demand_using_average_plus_stddev()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
+        $service->shouldReceive('calculateHistoricalStats')->andReturn([
+            'average' => 50.0,
+            'stddev' => 10.0,
+            'samples' => 3,
+            'years' => [2022, 2023, 2024],
+        ]);
+
+        // Subdimensionado: 30 inscritos vs média 50 (desvio = 40%)
+        $class = SchoolClass::factory()->create(['estmtr' => 30]);
+
+        $result = $service->calculateAdjustedDemand($class);
+
+        $this->assertTrue($result['applied']);
+        $this->assertEquals(80, $result['demand']); // 50 + 3 * 10
+        $this->assertNotNull($result['metadata']);
+        $this->assertEquals(50.0, $result['metadata']['average']);
+        $this->assertEquals(10.0, $result['metadata']['stddev']);
+
+        // Banco não deve ser alterado
+        $class->refresh();
+        $this->assertEquals(30, $class->estmtr);
+    }
+
+    /** @test */
+    public function it_applies_cap_to_adjusted_demand()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
+        $service->shouldReceive('calculateHistoricalStats')->andReturn([
+            'average' => 60.0,
+            'stddev' => 10.0,
+            'samples' => 3,
+            'years' => [2022, 2023, 2024],
+        ]);
+
+        // Força o cap via reflection, já que o construtor já leu o padrão 100
+        $reflection = new \ReflectionClass(HistoricalEnrollmentService::class);
+        $capProperty = $reflection->getProperty('cap');
+        $capProperty->setAccessible(true);
+        $capProperty->setValue($service, 70);
+
+        $class = SchoolClass::factory()->create(['estmtr' => 10]);
+
+        $result = $service->calculateAdjustedDemand($class);
+
+        $this->assertTrue($result['applied']);
+        $this->assertEquals(70, $result['demand']); // 60 + 3*10 = 90, mas cap = 70
+    }
+
+    /** @test */
+    public function it_does_not_adjust_demand_when_deviation_is_within_threshold()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
+        $service->shouldReceive('calculateHistoricalStats')->andReturn([
+            'average' => 100.0,
+            'stddev' => 5.0,
+            'samples' => 3,
+            'years' => [2022, 2023, 2024],
+        ]);
+
+        // 95 inscritos vs média 100 = 5% de desvio, abaixo do threshold padrão 7%
+        $class = SchoolClass::factory()->create(['estmtr' => 95]);
+
+        $result = $service->calculateAdjustedDemand($class);
+
+        $this->assertFalse($result['applied']);
+        $this->assertEquals(95, $result['demand']);
+    }
+
+    /** @test */
+    public function it_does_not_adjust_demand_for_non_first_semester_class()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(false);
+
+        $class = SchoolClass::factory()->create(['estmtr' => 10]);
+
+        $result = $service->calculateAdjustedDemand($class);
+
+        $this->assertFalse($result['applied']);
+        $this->assertEquals(10, $result['demand']);
+    }
+
+    /** @test */
+    public function it_does_not_adjust_demand_when_insufficient_historical_samples()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
+        $service->shouldReceive('calculateHistoricalStats')->andReturn([
+            'average' => 50.0,
+            'stddev' => 10.0,
+            'samples' => 1,
+            'years' => [2024],
+        ]);
+
+        $class = SchoolClass::factory()->create(['estmtr' => 10]);
+
+        $result = $service->calculateAdjustedDemand($class);
+
+        $this->assertFalse($result['applied']);
+        $this->assertEquals(10, $result['demand']);
+    }
+
+    /** @test */
+    public function it_uses_zero_stddev_when_only_one_sample_available()
+    {
+        $service = Mockery::mock(HistoricalEnrollmentService::class)->makePartial();
+        $service->shouldReceive('isFirstSemesterClass')->andReturn(true);
+        $service->shouldReceive('hasSpecialObstur')->andReturn(false);
+        $service->shouldReceive('calculateHistoricalStats')->andReturn([
+            'average' => 50.0,
+            'stddev' => 0.0,
+            'samples' => 2,
+            'years' => [2023, 2024],
+        ]);
+
+        $class = SchoolClass::factory()->create(['estmtr' => 10]);
+
+        $result = $service->calculateAdjustedDemand($class);
+
+        $this->assertTrue($result['applied']);
+        $this->assertEquals(50, $result['demand']); // 50 + 3*0
+    }
 }
