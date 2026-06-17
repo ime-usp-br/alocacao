@@ -11,9 +11,11 @@ use Illuminate\Support\Collection;
 class RoomAllocationPayloadBuilder
 {
     private HistoricalEnrollmentService $historicalService;
+    private bool $usesInjectedHistoricalService;
 
     public function __construct(?HistoricalEnrollmentService $historicalService = null)
     {
+        $this->usesInjectedHistoricalService = $historicalService !== null;
         $this->historicalService = $historicalService ?? app(HistoricalEnrollmentService::class);
     }
 
@@ -36,6 +38,19 @@ class RoomAllocationPayloadBuilder
     public function build(SchoolTerm $schoolTerm, array $roomIds, array $overrides = []): array
     {
         $roomIds = array_map('intval', $roomIds);
+
+        if (! $this->usesInjectedHistoricalService) {
+            $historicalOverrides = array_filter([
+                'historical_estimation_method' => $overrides['historical_estimation_method'] ?? null,
+                'historical_threshold_percent' => isset($overrides['historical_threshold_percent']) ? (float) $overrides['historical_threshold_percent'] : null,
+                'historical_lookback_years' => isset($overrides['historical_lookback_years']) ? (int) $overrides['historical_lookback_years'] : null,
+                'historical_min_years' => isset($overrides['historical_min_years']) ? (int) $overrides['historical_min_years'] : null,
+                'historical_cap' => isset($overrides['historical_cap']) ? (int) $overrides['historical_cap'] : null,
+                'historical_stddev_multiplier' => isset($overrides['historical_stddev_multiplier']) ? (float) $overrides['historical_stddev_multiplier'] : null,
+            ], fn ($value) => $value !== null);
+
+            $this->historicalService = new HistoricalEnrollmentService($historicalOverrides);
+        }
 
         $allClasses = SchoolClass::whereBelongsTo($schoolTerm)
             ->with(['classschedules', 'fusion.master', 'fusion.master.room', 'courseinformations', 'room'])
@@ -417,6 +432,7 @@ class RoomAllocationPayloadBuilder
     private function buildConfig(array $overrides): array
     {
         $defaults = config('alocacao.room_allocation', []);
+
         return array_merge($defaults, $overrides);
     }
 

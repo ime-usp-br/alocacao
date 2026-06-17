@@ -1221,4 +1221,34 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $class->refresh();
         $this->assertEquals(10, $class->estmtr);
     }
+
+    /** @test */
+    public function it_applies_solver_config_overrides_to_payload_config()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'estmtr' => 30,
+            'externa' => false,
+            'fusion_id' => null,
+        ]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $overrides = [
+            'strict_capacity' => false,
+            'undergrad_in_block_a_penalty' => 999.0,
+            'historical_estimation_method' => 'none',
+        ];
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id], $overrides);
+
+        $this->assertFalse($payload['config']['strict_capacity']);
+        $this->assertEquals(999.0, $payload['config']['undergrad_in_block_a_penalty']);
+        $this->assertEquals('none', $payload['config']['historical_estimation_method']);
+    }
 }
