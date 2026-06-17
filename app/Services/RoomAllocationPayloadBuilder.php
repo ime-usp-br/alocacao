@@ -10,6 +10,13 @@ use Illuminate\Support\Collection;
 
 class RoomAllocationPayloadBuilder
 {
+    private HistoricalEnrollmentService $historicalService;
+
+    public function __construct(?HistoricalEnrollmentService $historicalService = null)
+    {
+        $this->historicalService = $historicalService ?? app(HistoricalEnrollmentService::class);
+    }
+
     /**
      * Retorna o schema version esperado pelo solver.
      */
@@ -193,10 +200,34 @@ class RoomAllocationPayloadBuilder
             }
         }
 
-        $estmtrs = array_map(fn ($c) => $c->estmtr, $classes);
-        $hasNull = in_array(null, $estmtrs, true);
-        $validEstmtrs = array_filter($estmtrs, fn ($v) => $v !== null);
-        $demand = array_sum($validEstmtrs);
+        $adjustedDemands = [];
+        $hasNull = false;
+        $historicalAdjustmentApplied = false;
+        $historicalAdjustmentMetadata = [];
+
+        foreach ($classes as $class) {
+            if ($class->estmtr === null) {
+                $hasNull = true;
+                continue;
+            }
+
+            $adjusted = $this->historicalService->calculateAdjustedDemand($class);
+            $adjustedDemands[] = $adjusted['demand'];
+
+            if ($adjusted['applied']) {
+                $historicalAdjustmentApplied = true;
+                $metadata = $adjusted['metadata'] ?? [];
+                $historicalAdjustmentMetadata[] = array_merge([
+                    'class_id' => $class->id,
+                    'coddis' => $class->coddis,
+                    'codtur' => $class->codtur,
+                    'estmtr' => $class->estmtr,
+                    'adjusted_demand' => $adjusted['demand'],
+                ], $metadata);
+            }
+        }
+
+        $demand = array_sum($adjustedDemands);
 
         $timeslotLabels = $fusion
             ? $this->buildMergedTimeslotLabels($classes)
@@ -239,6 +270,8 @@ class RoomAllocationPayloadBuilder
             'preassigned_room_id' => $preassignedRoomId,
             'same_room_cohort' => $sameRoomCohort,
             'is_freshmen' => $isFreshmen,
+            'historical_adjustment_applied' => $historicalAdjustmentApplied,
+            'historical_adjustment_metadata' => $historicalAdjustmentMetadata ?: null,
         ];
     }
 

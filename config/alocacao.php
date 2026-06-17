@@ -27,6 +27,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Método de estimativa de demanda para turmas de 1º semestre no payload do
+    | solver. 'average_plus_stddev' usa média + (multiplicador * desvio padrão).
+    | Outros valores desativam a estimativa ajustada (usa estmtr puro).
+    |--------------------------------------------------------------------------
+    */
+    'historical_estimation_method' => env('HISTORICAL_ESTIMATION_METHOD', 'average_plus_stddev'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Multiplicador do desvio padrão quando historical_estimation_method for
+    | 'average_plus_stddev'. Valores maiores geram estimativas mais conservadoras.
+    |--------------------------------------------------------------------------
+    */
+    'historical_stddev_multiplier' => (float) env('HISTORICAL_STDDEV_MULTIPLIER', 3.0),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Teto máximo para a estimativa histórica de demanda no payload do solver.
+    | Evita que turmas muito grandes sejam enviadas para salas inadequadas.
+    |--------------------------------------------------------------------------
+    */
+    'historical_cap' => (int) env('HISTORICAL_CAP', 100),
+
+    /*
+    |--------------------------------------------------------------------------
     | Configurações do solver de alocação de salas (OR-Tools Python).
     |--------------------------------------------------------------------------
     */

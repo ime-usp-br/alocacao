@@ -5,15 +5,23 @@ namespace Tests\Unit;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Services\RoomAllocationPayloadBuilder;
+use App\Services\HistoricalEnrollmentService;
 use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use App\Models\Room;
 use App\Models\Fusion;
 use App\Models\ClassSchedule;
+use Mockery;
 
 class RoomAllocationPayloadBuilderTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
+    }
 
     /** @test */
     public function it_builds_payload_for_single_class_with_schedule()
@@ -1086,5 +1094,131 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     public function it_bumps_schema_version_to_1_1_0()
     {
         $this->assertEquals('1.1.0', RoomAllocationPayloadBuilder::schemaVersion());
+    }
+
+    /** @test */
+    public function it_applies_historical_adjustment_to_freshmen_class_demand()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $course = \App\Models\Course::factory()->create([
+            'sufixo_codtur' => '45',
+        ]);
+
+        $courseInfo = \App\Models\CourseInformation::factory()->create([
+            'tipobg' => 'O',
+            'numsemidl' => '1',
+        ]);
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '202445',
+            'coddis' => 'MAC0110',
+            'tiptur' => 'Graduação',
+            'externa' => false,
+            'fusion_id' => null,
+            'estmtr' => 10,
+        ]);
+        $class->courseinformations()->attach($courseInfo);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $historicalServiceMock = Mockery::mock(HistoricalEnrollmentService::class);
+        $historicalServiceMock->shouldReceive('calculateAdjustedDemand')
+            ->andReturn([
+                'demand' => 80,
+                'applied' => true,
+                'metadata' => [
+                    'average' => 70.0,
+                    'stddev' => 5.0,
+                    'cap' => 100,
+                ],
+            ]);
+
+        $builder = new RoomAllocationPayloadBuilder($historicalServiceMock);
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals(80, $group['demand']);
+        $this->assertTrue($group['historical_adjustment_applied']);
+        $this->assertNotNull($group['historical_adjustment_metadata']);
+        $this->assertEquals(80, $group['historical_adjustment_metadata'][0]['adjusted_demand']);
+    }
+
+    /** @test */
+    public function it_keeps_original_demand_when_historical_adjustment_is_not_applied()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'estmtr' => 55,
+        ]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $historicalServiceMock = Mockery::mock(HistoricalEnrollmentService::class);
+        $historicalServiceMock->shouldReceive('calculateAdjustedDemand')
+            ->andReturn([
+                'demand' => 55,
+                'applied' => false,
+                'metadata' => null,
+            ]);
+
+        $builder = new RoomAllocationPayloadBuilder($historicalServiceMock);
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals(55, $group['demand']);
+        $this->assertFalse($group['historical_adjustment_applied']);
+        $this->assertNull($group['historical_adjustment_metadata']);
+    }
+
+    /** @test */
+    public function it_does_not_persist_historical_adjustment_to_database()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $course = \App\Models\Course::factory()->create([
+            'sufixo_codtur' => '45',
+        ]);
+
+        $courseInfo = \App\Models\CourseInformation::factory()->create([
+            'tipobg' => 'O',
+            'numsemidl' => '1',
+        ]);
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '202445',
+            'coddis' => 'MAC0110',
+            'tiptur' => 'Graduação',
+            'externa' => false,
+            'fusion_id' => null,
+            'estmtr' => 10,
+        ]);
+        $class->courseinformations()->attach($courseInfo);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        $historicalServiceMock = Mockery::mock(HistoricalEnrollmentService::class);
+        $historicalServiceMock->shouldReceive('calculateAdjustedDemand')
+            ->andReturn([
+                'demand' => 80,
+                'applied' => true,
+                'metadata' => ['average' => 70.0],
+            ]);
+
+        $builder = new RoomAllocationPayloadBuilder($historicalServiceMock);
+        $builder->build($term, [$room->id]);
+
+        $class->refresh();
+        $this->assertEquals(10, $class->estmtr);
     }
 }

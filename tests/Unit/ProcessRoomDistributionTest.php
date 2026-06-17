@@ -47,10 +47,10 @@ class ProcessRoomDistributionTest extends TestCase
 
         Http::assertSent(function ($request) use ($term, $room) {
             $data = $request->data();
-            $this->assertArrayHasKey('payload', $data);
-            $this->assertArrayHasKey('webhook_url', $data);
-            $this->assertArrayHasKey('progress_webhook_url', $data);
-            $this->assertEquals([$room->id], array_column($data['payload']['rooms'], 'id'));
+            $this->assertArrayHasKey('meta', $data);
+            $this->assertArrayHasKey('webhook_url', $data['meta']);
+            $this->assertArrayHasKey('progress_webhook_url', $data['meta']);
+            $this->assertEquals([$room->id], array_column($data['rooms'], 'id'));
             return true;
         });
 
@@ -129,7 +129,7 @@ class ProcessRoomDistributionTest extends TestCase
         $job->handle();
 
         Http::assertSent(function ($request) use ($external, $normal) {
-            $groupIds = array_column($request->data()['payload']['groups'], 'id');
+            $groupIds = array_column($request->data()['groups'], 'id');
             $this->assertNotContains($external->id, $groupIds);
             $this->assertContains($normal->id, $groupIds);
             return true;
