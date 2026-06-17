@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\SchoolTerm;
 use App\Models\SolverLog;
 use App\Services\RoomAllocationPayloadBuilder;
+use App\Services\AllocationStateService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -120,13 +121,20 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
         );
 
         // Persist the payload for later debugging via admin view
-        SolverLog::create([
+        $solverLog = SolverLog::create([
             'school_term_id' => $this->schoolTermId,
             'job_id' => $jobId,
             'payload' => $payload,
             'status' => 'solving',
             'dispatched_at' => now(),
         ]);
+
+        // Auto-save the current allocation state before the solver runs
+        AllocationStateService::capture(
+            $term,
+            'Pré-Solver - ' . now()->format('d/m/Y H:i:s'),
+            $solverLog->id
+        );
 
         Log::info('ProcessRoomDistribution: job dispatched successfully', [
             'school_term_id' => $this->schoolTermId,
