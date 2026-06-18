@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\AllocationState;
+use App\Models\ClassSchedule;
+use App\Models\Room;
 use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use App\Models\SolverLog;
@@ -31,6 +33,9 @@ class AllocationResultWebhookController extends Controller
             'unassigned_groups' => 'nullable|array',
             'unassigned_groups.*' => 'integer',
             'suggestions' => 'nullable|array',
+            'suggestions.*.group_id' => 'required_with:suggestions|integer',
+            'suggestions.*.timeslot_id' => 'required_with:suggestions|integer',
+            'suggestions.*.suggested_room_id' => 'required_with:suggestions|integer',
             'metrics' => 'nullable|array',
         ]);
 
@@ -129,11 +134,14 @@ class AllocationResultWebhookController extends Controller
             return response()->json(['message' => 'Failed to apply results'], 500);
         }
 
-        // Store suggestions (Pass 2) for potential manual review
+        // Store suggestions (real split-class hints) for manual review
         if (! empty($suggestions)) {
             Cache::put(
                 "allocation_suggestions:{$schoolTermId}",
-                $suggestions,
+                [
+                    'raw' => $suggestions,
+                    'formatted' => $this->formatSuggestionsForDisplay($suggestions, $jobId),
+                ],
                 now()->addDays(7)
             );
         }
@@ -224,6 +232,124 @@ class AllocationResultWebhookController extends Controller
         }
 
         return 'Distribuição concluída: ' . implode(', ', $parts) . '.';
+    }
+
+    /**
+     * Enrich raw solver suggestions with human-readable day and room names,
+     * grouped by school class for display in the UI.
+     *
+     * The solver returns timeslot_id as the index inside the payload timeslots
+     * array. We map it back to the local class_schedules record using the
+     * dispatched payload stored in SolverLog.
+     */
+    private function formatSuggestionsForDisplay(array $suggestions, string $jobId): array
+    {
+        if (empty($suggestions)) {
+            return [];
+        }
+
+        $timeslotMap = $this->buildTimeslotToScheduleMap($suggestions, $jobId);
+
+        $groupIds = array_values(array_unique(array_column($suggestions, 'group_id')));
+        $roomIds = array_values(array_unique(array_column($suggestions, 'suggested_room_id')));
+
+        $classes = SchoolClass::whereIn('id', $groupIds)
+            ->get()
+            ->keyBy('id');
+
+        $rooms = Room::whereIn('id', $roomIds)
+            ->get()
+            ->keyBy('id');
+
+        $scheduleIds = array_values(array_filter($timeslotMap));
+        $schedules = ClassSchedule::whereIn('id', $scheduleIds)
+            ->get()
+            ->keyBy('id');
+
+        $grouped = [];
+        foreach ($suggestions as $suggestion) {
+            $class = $classes[$suggestion['group_id']] ?? null;
+            $room = $rooms[$suggestion['suggested_room_id']] ?? null;
+            $scheduleId = $timeslotMap[$suggestion['timeslot_id']] ?? null;
+            $schedule = $scheduleId ? ($schedules[$scheduleId] ?? null) : null;
+
+            if (! $class || ! $room || ! $schedule) {
+                continue;
+            }
+
+            $groupId = $class->id;
+            if (! isset($grouped[$groupId])) {
+                $classLabel = $class->tiptur === 'Graduação'
+                    ? 'T.'.substr($class->codtur, -2)
+                    : $class->codtur;
+                $grouped[$groupId] = [
+                    'label' => "Turma {$classLabel}",
+                    'days' => [],
+                ];
+            }
+
+            $day = ucfirst($schedule->diasmnocp);
+            $grouped[$groupId]['days'][$day] = $room->nome;
+        }
+
+        $formatted = [];
+        foreach ($grouped as $group) {
+            $parts = [];
+            foreach ($group['days'] as $day => $roomName) {
+                $parts[] = "{$day}: {$roomName}";
+            }
+            $formatted[] = $group['label'] . ' - ' . implode(', ', $parts);
+        }
+
+        return $formatted;
+    }
+
+    /**
+     * Map solver timeslot indices back to local class_schedule IDs using the
+     * payload stored when the job was dispatched.
+     */
+    private function buildTimeslotToScheduleMap(array $suggestions, string $jobId): array
+    {
+        $timeslotIds = array_values(array_unique(array_column($suggestions, 'timeslot_id')));
+
+        $solverLog = SolverLog::where('job_id', $jobId)->first();
+        $payload = $solverLog ? ($solverLog->payload ?? []) : [];
+        $timeslots = $payload['timeslots'] ?? [];
+
+        $map = [];
+        foreach ($timeslotIds as $timeslotId) {
+            $timeslot = collect($timeslots)->firstWhere('id', $timeslotId);
+            if (! $timeslot || empty($timeslot['label'])) {
+                continue;
+            }
+
+            $schedule = $this->findScheduleByTimeslotLabel($timeslot['label']);
+            if ($schedule) {
+                $map[$timeslotId] = $schedule->id;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Find a class schedule record that matches a payload timeslot label.
+     */
+    private function findScheduleByTimeslotLabel(string $label): ?ClassSchedule
+    {
+        $parts = explode('_', $label);
+        if (count($parts) !== 3) {
+            return null;
+        }
+
+        [$day, $startRaw, $endRaw] = $parts;
+        $start = substr($startRaw, 0, 2) . ':' . substr($startRaw, 2, 2);
+        $end = substr($endRaw, 0, 2) . ':' . substr($endRaw, 2, 2);
+
+        return ClassSchedule::where('diasmnocp', $day)
+            ->where('horent', $start)
+            ->where('horsai', $end)
+            ->first();
     }
 
     /**

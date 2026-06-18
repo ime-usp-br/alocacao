@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ClassSchedule;
 use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use App\Models\Room;
@@ -291,6 +292,26 @@ class AllocationWebhookTest extends TestCase
     public function result_webhook_stores_suggestions_in_cache()
     {
         $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create(['nome' => 'B01']);
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'tiptur' => 'Graduação',
+            'codtur' => '0123T14',
+        ]);
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+
+        \App\Models\SolverLog::create([
+            'school_term_id' => $term->id,
+            'job_id' => 'job-sugg',
+            'payload' => [
+                'timeslots' => [
+                    ['id' => 0, 'label' => 'seg_0800_1000'],
+                ],
+            ],
+            'status' => 'solving',
+            'dispatched_at' => now(),
+        ]);
 
         Cache::put("allocation:{$term->id}", [
             'job_id' => 'job-sugg',
@@ -298,7 +319,7 @@ class AllocationWebhookTest extends TestCase
         ], now()->addHour());
 
         $suggestions = [
-            ['group_id' => 1, 'suggested_splits' => [['room_id' => 2, 'days' => ['seg']]]],
+            ['group_id' => $class->id, 'timeslot_id' => 0, 'suggested_room_id' => $room->id],
         ];
 
         $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
@@ -312,7 +333,8 @@ class AllocationWebhookTest extends TestCase
         $response->assertOk();
 
         $cachedSuggestions = Cache::get("allocation_suggestions:{$term->id}");
-        $this->assertEquals($suggestions, $cachedSuggestions);
+        $this->assertEquals($suggestions, $cachedSuggestions['raw']);
+        $this->assertContains('Turma T.14 - Seg: B01', $cachedSuggestions['formatted']);
     }
 
     /** @test */

@@ -48,7 +48,15 @@ class RoomController extends Controller
 
         $salas = Room::all();
 
-        return view('rooms.index', compact(['salas']));
+        $schoolTerm = SchoolTerm::getLatest();
+        $suggestions = $schoolTerm
+            ? Cache::get("allocation_suggestions:{$schoolTerm->id}")
+            : null;
+        $formattedSuggestions = is_array($suggestions)
+            ? ($suggestions['formatted'] ?? [])
+            : [];
+
+        return view('rooms.index', compact(['salas', 'formattedSuggestions']));
     }
 
     /**
