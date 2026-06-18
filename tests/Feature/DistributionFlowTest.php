@@ -572,4 +572,72 @@ class DistributionFlowTest extends TestCase
         $cached = Cache::get("allocation:{$term->id}");
         $this->assertEquals('completed', $cached['status']);
     }
+
+    /** @test */
+    public function result_webhook_marks_split_class_as_unassigned_and_stores_suggestions()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $roomB01 = Room::factory()->create(['nome' => 'B01']);
+        $roomB02 = Room::factory()->create(['nome' => 'B02']);
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+            'tiptur' => 'Graduação',
+            'codtur' => '0123T14',
+            'coddis' => 'MAT9999',
+        ]);
+
+        $scheduleSeg = ClassSchedule::factory()->seg()->morning()->create();
+        $scheduleQua = ClassSchedule::factory()->qua()->morning()->create();
+        $class->classschedules()->attach([$scheduleSeg->id, $scheduleQua->id]);
+
+        \App\Models\SolverLog::create([
+            'school_term_id' => $term->id,
+            'job_id' => 'split-class-123',
+            'payload' => [
+                'timeslots' => [
+                    ['id' => 0, 'label' => 'seg_0800_1000'],
+                    ['id' => 1, 'label' => 'qua_0800_1000'],
+                ],
+            ],
+            'status' => 'solving',
+            'dispatched_at' => now(),
+        ]);
+
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'split-class-123',
+            'status' => 'solving',
+        ], now()->addHour());
+
+        Cache::put("allocation:job:split-class-123", $term->id, now()->addHour());
+
+        $response = $this->postJson('/api/webhooks/allocation-result', [
+            'job_id' => 'split-class-123',
+            'status' => 'optimal',
+            'allocations' => [],
+            'unassigned_groups' => [$class->id],
+            'suggestions' => [
+                ['group_id' => $class->id, 'timeslot_id' => 0, 'suggested_room_id' => $roomB01->id],
+                ['group_id' => $class->id, 'timeslot_id' => 1, 'suggested_room_id' => $roomB02->id],
+            ],
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('school_classes', [
+            'id' => $class->id,
+            'room_id' => null,
+        ]);
+
+        $cachedSuggestions = Cache::get("allocation_suggestions:{$term->id}");
+        $this->assertCount(2, $cachedSuggestions['raw']);
+        $this->assertContains('Turma T.14 - Seg: B01, Qua: B02', $cachedSuggestions['formatted']);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals(1, $cached['unassigned_count']);
+        $this->assertEquals(0, $cached['manual_count']);
+    }
 }
