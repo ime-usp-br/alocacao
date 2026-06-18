@@ -277,7 +277,12 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertArrayHasKey('block_a_restriction_for_freshmen', $payload['config']);
         $this->assertArrayHasKey('undergrad_in_block_a_penalty', $payload['config']);
         $this->assertArrayHasKey('pos_in_block_b_penalty', $payload['config']);
-        $this->assertArrayHasKey('wasted_seats_weight', $payload['config']);
+        $this->assertArrayHasKey('waste_penalty', $payload['config']);
+        $this->assertArrayHasKey('claustrophobia_penalty', $payload['config']);
+        $this->assertArrayHasKey('comfort_zone_min_percent', $payload['config']);
+        $this->assertArrayHasKey('comfort_zone_max_percent', $payload['config']);
+        $this->assertArrayHasKey('split_class_penalty', $payload['config']);
+        $this->assertArrayHasKey('split_cohort_penalty', $payload['config']);
         $this->assertArrayHasKey('unassigned_penalty', $payload['config']);
         $this->assertArrayHasKey('priority_weight', $payload['config']);
 
@@ -286,9 +291,21 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertTrue($payload['config']['block_a_restriction_for_freshmen']);
         $this->assertEquals(500.0, $payload['config']['undergrad_in_block_a_penalty']);
         $this->assertEquals(500.0, $payload['config']['pos_in_block_b_penalty']);
-        $this->assertEquals(1.0, $payload['config']['wasted_seats_weight']);
+        $this->assertEquals(1.0, $payload['config']['waste_penalty']);
+        $this->assertEquals(1.0, $payload['config']['claustrophobia_penalty']);
+        $this->assertEquals(10.0, $payload['config']['comfort_zone_min_percent']);
+        $this->assertEquals(25.0, $payload['config']['comfort_zone_max_percent']);
+        $this->assertEquals(1.0, $payload['config']['split_class_penalty']);
+        $this->assertEquals(1.0, $payload['config']['split_cohort_penalty']);
         $this->assertEquals(1000.0, $payload['config']['unassigned_penalty']);
         $this->assertEquals(0.0, $payload['config']['priority_weight']);
+
+        $this->assertIsFloat($payload['config']['waste_penalty']);
+        $this->assertIsFloat($payload['config']['claustrophobia_penalty']);
+        $this->assertIsFloat($payload['config']['comfort_zone_min_percent']);
+        $this->assertIsFloat($payload['config']['comfort_zone_max_percent']);
+        $this->assertIsFloat($payload['config']['split_class_penalty']);
+        $this->assertIsFloat($payload['config']['split_cohort_penalty']);
     }
 
     /** @test */
@@ -304,11 +321,11 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $builder = new RoomAllocationPayloadBuilder();
         $payload = $builder->build($term, [$room->id], [
             'strict_capacity' => true,
-            'wasted_seats_weight' => 5.0,
+            'waste_penalty' => 5.0,
         ]);
 
         $this->assertTrue($payload['config']['strict_capacity']);
-        $this->assertEquals(5.0, $payload['config']['wasted_seats_weight']);
+        $this->assertEquals(5.0, $payload['config']['waste_penalty']);
         $this->assertTrue($payload['config']['block_b_restriction_for_pos']);
     }
 

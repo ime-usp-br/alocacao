@@ -63,7 +63,12 @@ class DistributesRoomRequest extends FormRequest
 
             'solver_config.undergrad_in_block_a_penalty' => 'nullable|numeric',
             'solver_config.pos_in_block_b_penalty' => 'nullable|numeric',
-            'solver_config.wasted_seats_weight' => 'nullable|numeric',
+            'solver_config.waste_penalty' => 'nullable|numeric',
+            'solver_config.claustrophobia_penalty' => 'nullable|numeric',
+            'solver_config.comfort_zone_min_percent' => 'nullable|numeric',
+            'solver_config.comfort_zone_max_percent' => 'nullable|numeric',
+            'solver_config.split_class_penalty' => 'nullable|numeric',
+            'solver_config.split_cohort_penalty' => 'nullable|numeric',
             'solver_config.unassigned_penalty' => 'nullable|numeric',
             'solver_config.priority_weight' => 'nullable|numeric',
 
