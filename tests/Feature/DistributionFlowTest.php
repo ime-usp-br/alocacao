@@ -374,4 +374,87 @@ class DistributionFlowTest extends TestCase
         $this->assertStringContainsString('1 turma(s) nova(s) foi(ram) alocada(s)', $cached['message']);
         $this->assertStringContainsString('1 turma(s) mudou(aram) de sala', $cached['message']);
     }
+
+    /** @test */
+    public function comfort_zone_end_to_end_scenario_prefers_50_seat_room()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $room42 = Room::factory()->create(['assentos' => 42]);
+        $room50 = Room::factory()->create(['assentos' => 50]);
+        $room100 = Room::factory()->create(['assentos' => 100]);
+
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+            'estmtr' => 40,
+        ]);
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $class->classschedules()->attach($schedule);
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response([
+                'job_id' => 'comfort-zone-123',
+            ], 202),
+        ]);
+
+        $response = $this->actingAsOperator()
+            ->patch('/rooms/distributes', [
+                'rooms_id' => [$room42->id, $room50->id, $room100->id],
+                'solver_config' => [
+                    'waste_penalty' => 10000.0,
+                    'claustrophobia_penalty' => 10000.0,
+                    'comfort_zone_min_percent' => 10.0,
+                    'comfort_zone_max_percent' => 25.0,
+                ],
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('alert-info');
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertNotNull($cached);
+        $this->assertEquals('comfort-zone-123', $cached['job_id']);
+
+        $solverLog = \App\Models\SolverLog::where('job_id', 'comfort-zone-123')->first();
+        $this->assertNotNull($solverLog);
+        $this->assertEquals(10000.0, $solverLog->payload['config']['waste_penalty']);
+        $this->assertEquals(10000.0, $solverLog->payload['config']['claustrophobia_penalty']);
+        $this->assertEquals(10.0, $solverLog->payload['config']['comfort_zone_min_percent']);
+        $this->assertEquals(25.0, $solverLog->payload['config']['comfort_zone_max_percent']);
+
+        Http::assertSent(function ($request) {
+            $payload = $request->data();
+
+            if (! isset($payload['config'])) {
+                return false;
+            }
+
+            return $payload['config']['waste_penalty'] === 10000.0
+                && $payload['config']['claustrophobia_penalty'] === 10000.0
+                && $payload['config']['comfort_zone_min_percent'] === 10.0
+                && $payload['config']['comfort_zone_max_percent'] === 25.0;
+        });
+
+        $response = $this->postJson('/api/webhooks/allocation-result', [
+            'job_id' => 'comfort-zone-123',
+            'status' => 'optimal',
+            'allocations' => [
+                ['group_id' => $class->id, 'room_id' => $room50->id],
+            ],
+            'unassigned_groups' => [],
+            'suggestions' => [],
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('school_classes', [
+            'id' => $class->id,
+            'room_id' => $room50->id,
+        ]);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals('completed', $cached['status']);
+    }
 }
