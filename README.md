@@ -301,6 +301,20 @@ ALOCACAO_SOLVER_TIMEOUT=60
 
 > **Atenção:** sem o solver configurado e em execução, o botão "Distribuir Turmas" falhará com erro de conexão.
 
+### Pesos de penalidade (calibrados via Machine Learning)
+
+Os valores padrão das penalidades usadas pelo solver estão definidos em `config/alocacao.php` (bloco `room_allocation`). Esses valores foram calibrados automaticamente com **Optuna** a partir de dados históricos reais do IME e publicados na issue [#69](https://github.com/ime-usp-br/alocacao/issues/69).
+
+A hierarquia de prioridade resultante é (do maior peso para o menor):
+
+1. **Não alocar turmas** (`unassigned_penalty` = `1745715.0`) — peso mais alto.
+2. **Dividir a mesma turma** em várias salas (`split_class_penalty` = `97780.0`).
+3. **Dividir turmas do mesmo coorte** (`split_cohort_penalty` = `9635.0`).
+4. **Claustrofobia** (sala com capacidade bem menor que a demanda) (`claustrophobia_penalty` = `7.0`).
+5. **Desperdício** de vagas (`waste_penalty` = `1.0`) — peso mais baixo.
+
+> **Cuidado:** embora seja possível sobrescrever esses valores via `.env` (variáveis `ROOM_ALLOCATION_*_PENALTY`), alterações manuais podem quebrar a hierarquia de prioridades e prejudicar a qualidade da alocação. Recomenda-se manter os defaults calibrados, a menos que haja uma nova rodada de otimização com dados atualizados.
+
 ### Subindo o solver localmente
 
 O solver é mantido em repositório separado. Para desenvolvimento local, você pode executá-lo via Docker (se disponível) ou Python diretamente:
