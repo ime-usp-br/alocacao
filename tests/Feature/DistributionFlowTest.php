@@ -457,4 +457,119 @@ class DistributionFlowTest extends TestCase
         $cached = Cache::get("allocation:{$term->id}");
         $this->assertEquals('completed', $cached['status']);
     }
+
+    /** @test */
+    public function cohort_split_scenario_accepts_separate_rooms()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $room60 = Room::factory()->create(['assentos' => 60]);
+        $room40 = Room::factory()->create(['assentos' => 40]);
+
+        $course = \App\Models\Course::factory()->create([
+            'sufixo_codtur' => '45',
+        ]);
+
+        $courseInfo = \App\Models\CourseInformation::factory()->create([
+            'tipobg' => 'O',
+            'numsemidl' => '1',
+        ]);
+
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '202445',
+            'coddis' => 'MAT0123',
+            'tiptur' => 'Graduação',
+            'externa' => false,
+            'fusion_id' => null,
+            'room_id' => null,
+            'estmtr' => 40,
+        ]);
+        $classA->courseinformations()->attach($courseInfo);
+
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'codtur' => '202445',
+            'coddis' => 'MAT0456',
+            'tiptur' => 'Graduação',
+            'externa' => false,
+            'fusion_id' => null,
+            'room_id' => null,
+            'estmtr' => 40,
+        ]);
+        $classB->courseinformations()->attach($courseInfo);
+
+        $scheduleA = ClassSchedule::factory()->seg()->morning()->create();
+        $classA->classschedules()->attach($scheduleA);
+
+        $scheduleB = ClassSchedule::factory()->ter()->morning()->create();
+        $classB->classschedules()->attach($scheduleB);
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response([
+                'job_id' => 'cohort-split-123',
+            ], 202),
+        ]);
+
+        $response = $this->actingAsOperator()
+            ->patch('/rooms/distributes', [
+                'rooms_id' => [$room60->id, $room40->id],
+                'solver_config' => [
+                    'split_cohort_penalty' => 1000.0,
+                ],
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('alert-info');
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertNotNull($cached);
+        $this->assertEquals('cohort-split-123', $cached['job_id']);
+
+        $solverLog = \App\Models\SolverLog::where('job_id', 'cohort-split-123')->first();
+        $this->assertNotNull($solverLog);
+        $this->assertEquals(1000.0, $solverLog->payload['config']['split_cohort_penalty']);
+
+        $groupA = collect($solverLog->payload['groups'])->firstWhere('id', $classA->id);
+        $groupB = collect($solverLog->payload['groups'])->firstWhere('id', $classB->id);
+        $this->assertNotNull($groupA);
+        $this->assertNotNull($groupB);
+        $this->assertEquals('cohort_45_sem_1', $groupA['same_room_cohort']);
+        $this->assertEquals($groupA['same_room_cohort'], $groupB['same_room_cohort']);
+
+        Http::assertSent(function ($request) {
+            $payload = $request->data();
+
+            if (! isset($payload['config'])) {
+                return false;
+            }
+
+            return $payload['config']['split_cohort_penalty'] === 1000.0;
+        });
+
+        $response = $this->postJson('/api/webhooks/allocation-result', [
+            'job_id' => 'cohort-split-123',
+            'status' => 'feasible',
+            'allocations' => [
+                ['group_id' => $classA->id, 'room_id' => $room60->id],
+                ['group_id' => $classB->id, 'room_id' => $room40->id],
+            ],
+            'unassigned_groups' => [],
+            'suggestions' => [],
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('school_classes', [
+            'id' => $classA->id,
+            'room_id' => $room60->id,
+        ]);
+        $this->assertDatabaseHas('school_classes', [
+            'id' => $classB->id,
+            'room_id' => $room40->id,
+        ]);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals('completed', $cached['status']);
+    }
 }
