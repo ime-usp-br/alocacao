@@ -105,6 +105,8 @@
                                                         @php
                                                             $dobradinha = "";
                                                             $label = "";
+                                                            $totalEstimado = $turma->fusion->schoolclasses->sum('estmtr');
+                                                            $label .= "Total estimado de matriculados " . ($totalEstimado > 0 ? $totalEstimado : 'não disponível') . "\n";
                                                             $nomdis = $turma->fusion->schoolclasses->pluck("nomdis")->unique()->toArray();
                                                             if($turma->fusion->schoolclasses->pluck("coddis")->unique()->count() == 1){
                                                                 $dobradinha .= $turma->fusion->schoolclasses[0]->coddis." ";
@@ -137,7 +139,7 @@
                                                             }
                                                     
                                                         @endphp
-                                                        {{$dobradinha}}                                                                                                                  
+                                                        <span class="text-dark" title="{{ $label }}">{{$dobradinha}}</span>
                                                     @else
                                                         @if($turma->tiptur=="Graduação")
                                                             @php
@@ -151,7 +153,11 @@
                                                                 {{ $turma->coddis." T.".substr($turma->codtur, -2, 2) }}
                                                             </a>
                                                         @else
-                                                            {{ $turma->coddis }}
+                                                            @php
+                                                                $label = $turma->nomdis;
+                                                                $label .= "\n". ($turma->estmtr ? "Número estimado de matriculados ".$turma->estmtr : "Não foram encontrados registros anteriores para calcular uma estimativa de matriculados");
+                                                            @endphp
+                                                            <span class="text-dark" title="{{ $label }}">{{ $turma->coddis }}</span>
                                                         @endif
                                                         
                                                     @endif
