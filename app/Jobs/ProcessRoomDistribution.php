@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use App\Models\SolverLog;
 use App\Services\RoomAllocationPayloadBuilder;
@@ -23,6 +24,7 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     public int $schoolTermId;
     public array $roomIds;
     public array $solverConfig;
+    public bool $syncEnrollment;
 
     public int $timeout = 60;
     public int $tries = 3;
@@ -31,11 +33,12 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     /**
      * Create a new job instance.
      */
-    public function __construct(int $schoolTermId, array $roomIds, array $solverConfig = [])
+    public function __construct(int $schoolTermId, array $roomIds, array $solverConfig = [], bool $syncEnrollment = false)
     {
         $this->schoolTermId = $schoolTermId;
         $this->roomIds = $roomIds;
         $this->solverConfig = $solverConfig;
+        $this->syncEnrollment = $syncEnrollment;
     }
 
     /**
@@ -52,6 +55,20 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     public function handle(): void
     {
         $term = SchoolTerm::findOrFail($this->schoolTermId);
+
+        if ($this->syncEnrollment) {
+            Log::info('ProcessRoomDistribution: syncing enrollment from Replicado', [
+                'school_term_id' => $this->schoolTermId,
+            ]);
+
+            SchoolClass::whereBelongsTo($term)
+                ->chunkById(100, function ($classes) {
+                    foreach ($classes as $class) {
+                        $class->calcEstimadedEnrollment();
+                        $class->save();
+                    }
+                });
+        }
 
         $payload = (new RoomAllocationPayloadBuilder())->build($term, $this->roomIds, $this->solverConfig);
 

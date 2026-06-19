@@ -108,6 +108,43 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     }
 
     /** @test */
+    public function it_sets_tiptur_to_mixed_for_fusion_with_graduation_and_post_graduation()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        $fusion = Fusion::factory()->create();
+        $classA = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'coddis' => 'MAT2453',
+            'codtur' => '20241',
+            'tiptur' => 'Graduação',
+            'estmtr' => 40,
+            'fusion_id' => $fusion->id,
+        ]);
+        $classB = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'coddis' => 'MAT6660',
+            'codtur' => '20241',
+            'tiptur' => 'Pós Graduação',
+            'estmtr' => 20,
+            'fusion_id' => $fusion->id,
+        ]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $classA->classschedules()->attach($schedule);
+        $classB->classschedules()->attach($schedule);
+
+        $builder = new RoomAllocationPayloadBuilder();
+        $payload = $builder->build($term, [$room->id]);
+
+        $group = $payload['groups'][0];
+        $this->assertEquals('fusion', $group['type']);
+        $this->assertEquals('Mista', $group['tiptur']);
+        $this->assertEquals(60, $group['demand']);
+    }
+
+    /** @test */
     public function it_builds_payload_for_fusion_with_partial_null_enrollment()
     {
         $term = SchoolTerm::factory()->create();
@@ -285,17 +322,17 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertArrayHasKey('priority_weight', $payload['config']);
 
         $this->assertTrue($payload['config']['strict_capacity']);
-        $this->assertTrue($payload['config']['block_b_restriction_for_pos']);
+        $this->assertFalse($payload['config']['block_b_restriction_for_pos']);
         $this->assertTrue($payload['config']['block_a_restriction_for_freshmen']);
         $this->assertEquals(500.0, $payload['config']['undergrad_in_block_a_penalty']);
         $this->assertEquals(500.0, $payload['config']['pos_in_block_b_penalty']);
         $this->assertEquals(1.0, $payload['config']['waste_penalty']);
-        $this->assertEquals(1.0, $payload['config']['claustrophobia_penalty']);
+        $this->assertEquals(7.0, $payload['config']['claustrophobia_penalty']);
         $this->assertEquals(10.0, $payload['config']['comfort_zone_min_percent']);
         $this->assertEquals(25.0, $payload['config']['comfort_zone_max_percent']);
-        $this->assertEquals(1.0, $payload['config']['split_class_penalty']);
-        $this->assertEquals(1.0, $payload['config']['split_cohort_penalty']);
-        $this->assertEquals(1000.0, $payload['config']['unassigned_penalty']);
+        $this->assertEquals(97780.0, $payload['config']['split_class_penalty']);
+        $this->assertEquals(9635.0, $payload['config']['split_cohort_penalty']);
+        $this->assertEquals(1745715.0, $payload['config']['unassigned_penalty']);
         $this->assertEquals(0.0, $payload['config']['priority_weight']);
 
         $this->assertIsFloat($payload['config']['waste_penalty']);
@@ -324,7 +361,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
 
         $this->assertTrue($payload['config']['strict_capacity']);
         $this->assertEquals(5.0, $payload['config']['waste_penalty']);
-        $this->assertTrue($payload['config']['block_b_restriction_for_pos']);
+        $this->assertFalse($payload['config']['block_b_restriction_for_pos']);
     }
 
     /** @test */

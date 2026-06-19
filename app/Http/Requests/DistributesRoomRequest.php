@@ -52,6 +52,8 @@ class DistributesRoomRequest extends FormRequest
     public function rules()
     {
         return [
+            'sync_enrollment' => 'nullable|boolean',
+
             'rooms_id' => 'required|array',
             'rooms_id.*' => 'required|numeric',
 
