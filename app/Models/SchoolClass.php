@@ -23,6 +23,8 @@ class SchoolClass extends Model
         'tiptur',
         'nomdis',
         'coddis',
+        'numseqdis',
+        'numofe',
         'estmtr',
         'externa',
         'dtainitur',
@@ -188,17 +190,28 @@ class SchoolClass extends Model
 
     public function calcEstimadedEnrollment()
     {
-        $query = " SELECT (T.numins+T.numinscpl+T.numinsopt+T.numinsecr+T.numinsoptlre) AS TOTALINSCRITOS";
-        $query .= " FROM TURMAGR AS T";
-        $query .= " WHERE (T.coddis = :coddis)";
-        $query .= " AND T.codtur LIKE :codtur";
-        $query .= " AND T.verdis = (SELECT MAX(T.verdis) 
-                                    FROM TURMAGR AS T 
-                                    WHERE T.coddis = :coddis)";
-        $param = [
-            'coddis' => $this->coddis,
-            'codtur' => $this->codtur,
-        ];
+        if ($this->tiptur == "Pós Graduação" && $this->numseqdis && $this->numofe) {
+            $query = " SELECT COUNT(DISTINCT M.codpes) AS TOTALINSCRITOS";
+            $query .= " FROM R41PGMMATTUR AS M";
+            $query .= " WHERE M.sgldis = :sgldis";
+            $query .= " AND M.numseqdis = :numseqdis";
+            $query .= " AND M.numofe = :numofe";
+            $query .= " AND M.stamtrpgmofe IN ('P', 'A', 'D')";
+            $param = [
+                'sgldis' => $this->coddis,
+                'numseqdis' => $this->numseqdis,
+                'numofe' => $this->numofe,
+            ];
+        } else {
+            $query = " SELECT (T.numins+T.numinscpl+T.numinsopt+T.numinsecr+T.numinsoptlre) AS TOTALINSCRITOS";
+            $query .= " FROM TURMAGR AS T";
+            $query .= " WHERE (T.coddis = :coddis)";
+            $query .= " AND T.codtur LIKE :codtur";
+            $param = [
+                'coddis' => $this->coddis,
+                'codtur' => $this->codtur,
+            ];
+        }
 
         $res = DB::fetchAll($query, $param);
 
@@ -415,8 +428,6 @@ class SchoolClass extends Model
             $turmas[$key]['tiptur'] = "Pós Graduação";
             $turmas[$key]['codtur'] = $schoolTerm->year . ($schoolTerm->period == "1° Semestre" ? "1" : "2") . $turmas[$key]['numseqdis'] . $turmas[$key]['numofe'];
             $turmas[$key]['externa'] = false;
-            unset($turmas[$key]['numseqdis']);
-            unset($turmas[$key]['numofe']);
         }
 
         if ($onProgress) {
