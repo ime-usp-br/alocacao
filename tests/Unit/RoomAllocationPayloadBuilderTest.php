@@ -52,7 +52,6 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $this->assertEquals([$class->id], $group['class_ids']);
         $this->assertEquals('MAC0110', $group['coddis']);
         $this->assertEquals(55, $group['demand']);
-        $this->assertFalse($group['has_null_enrollment']);
         $this->assertCount(1, $group['timeslot_ids']);
         $this->assertEquals(0, $group['timeslot_ids'][0]);
         $this->assertNull($group['preassigned_room_id']);
@@ -130,7 +129,6 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $payload = $builder->build($term, [$room->id]);
 
         $group = $payload['groups'][0];
-        $this->assertTrue($group['has_null_enrollment']);
         $this->assertEquals(40, $group['demand']);
         $this->assertArrayHasKey('same_room_cohort', $group);
         $this->assertNull($group['same_room_cohort']);
@@ -435,7 +433,6 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $payload = $builder->build($term, [$room->id]);
 
         $group = $payload['groups'][0];
-        $this->assertTrue($group['has_null_enrollment']);
         $this->assertEquals(0, $group['demand']);
         $this->assertArrayHasKey('same_room_cohort', $group);
         $this->assertNull($group['same_room_cohort']);

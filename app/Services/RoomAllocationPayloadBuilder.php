@@ -216,18 +216,12 @@ class RoomAllocationPayloadBuilder
         }
 
         $adjustedDemands = [];
-        $hasNull = false;
         $historicalAdjustmentApplied = false;
         $historicalAdjustmentMetadata = [];
 
         foreach ($classes as $class) {
-            if ($class->estmtr === null) {
-                $hasNull = true;
-                continue;
-            }
-
             $adjusted = $this->historicalService->calculateAdjustedDemand($class);
-            $adjustedDemands[] = $adjusted['demand'];
+            $adjustedDemands[] = (int) $adjusted['demand'];
 
             if ($adjusted['applied']) {
                 $historicalAdjustmentApplied = true;
@@ -237,7 +231,7 @@ class RoomAllocationPayloadBuilder
                     'coddis' => $class->coddis,
                     'codtur' => $class->codtur,
                     'estmtr' => $class->estmtr,
-                    'adjusted_demand' => $adjusted['demand'],
+                    'adjusted_demand' => (int) $adjusted['demand'],
                 ], $metadata);
             }
         }
@@ -280,7 +274,6 @@ class RoomAllocationPayloadBuilder
             'nomdis' => $representative->nomdis,
             'tiptur' => $tiptur,
             'demand' => $demand,
-            'has_null_enrollment' => $hasNull,
             'timeslot_labels' => $timeslotLabels,
             'preassigned_room_id' => $preassignedRoomId,
             'same_room_cohort' => $sameRoomCohort,
