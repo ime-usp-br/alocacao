@@ -207,12 +207,23 @@ class RoomAllocationPayloadBuilder
         $classIds = array_map(fn ($c) => $c->id, $classes);
         $representative = $classes[0];
 
-        $tiptur = 'Pós Graduação';
+        $hasGraduacao = false;
+        $hasPosGraduacao = false;
+
         foreach ($classes as $class) {
             if ($class->tiptur === 'Graduação') {
-                $tiptur = 'Graduação';
-                break;
+                $hasGraduacao = true;
+            } elseif ($class->tiptur === 'Pós Graduação') {
+                $hasPosGraduacao = true;
             }
+        }
+
+        if ($hasGraduacao && $hasPosGraduacao) {
+            $tiptur = 'Mista';
+        } elseif ($hasGraduacao) {
+            $tiptur = 'Graduação';
+        } else {
+            $tiptur = 'Pós Graduação';
         }
 
         $adjustedDemands = [];

@@ -282,6 +282,7 @@
 @php
 $tooltips = [
     'strict_capacity' => 'Quando ativada, o solver não pode alocar turmas em salas com capacidade menor que a demanda.',
+    'sync_enrollment' => 'Atualiza o número de inscritos (estmtr) diretamente do Replicado antes de executar o solver.',
     'block_b_restriction_for_pos' => 'Quando ativada, pós-graduação não pode ser alocada no Bloco B.',
     'block_a_restriction_for_freshmen' => 'Quando ativada, calouros do IME devem ser alocados no Bloco A.',
     'undergrad_in_block_a_penalty' => 'Penalidade aplicada ao alocar graduação no Bloco A (deveria ser preferencialmente no Bloco B).',
@@ -355,6 +356,22 @@ $tooltips = [
                                     </div>
                                 </div>
                             @endforeach
+
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <div class="custom-control custom-switch">
+                                        <input type="hidden" name="sync_enrollment" value="0" form="distributesForm">
+                                        <input type="checkbox" class="custom-control-input" id="sync_enrollment"
+                                            name="sync_enrollment" value="1"
+                                            form="distributesForm"
+                                            checked>
+                                        <label class="custom-control-label" for="sync_enrollment"
+                                            data-toggle="tooltip" data-placement="top" title="{{ $tooltips['sync_enrollment'] }}">
+                                            Atualizar inscritos (Replicado)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

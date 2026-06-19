@@ -272,7 +272,8 @@ class RoomController extends Controller
         ProcessRoomDistribution::dispatch(
             $schoolterm->id,
             $validated['rooms_id'],
-            $validated['solver_config'] ?? []
+            $validated['solver_config'] ?? [],
+            (bool) ($validated['sync_enrollment'] ?? false)
         );
 
         Session::put("alert-info", "A distribuição de salas foi iniciada. Acompanhe o progresso na barra acima.");
