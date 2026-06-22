@@ -4,10 +4,10 @@ namespace App\Jobs;
 
 use App\Models\AllocationState;
 use App\Models\ComparisonReport;
-use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use App\Services\AllocationEvaluatorService;
 use App\Services\AllocationStateService;
+use App\Services\ComparisonAllocationCollector;
 use App\Services\RoomAllocationPayloadBuilder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -106,8 +106,9 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             $legacyJob->handle();
 
             // 4. Coleta imediatamente o mapa resultante [class_id => room_id]
-            //    antes de qualquer rollback.
-            $legacyAllocations = $this->collectRawAllocations($term);
+            //    antes de qualquer rollback, usando a mesma politica de coleta
+            //    do solver (DB com precedencia de mestre de fusao).
+            $legacyAllocations = (new ComparisonAllocationCollector())->collectFromDatabase($term);
 
             // 5. Aborta a transacao IMEDIATAMENTE para garantir que o banco
             //    de producao permaneca intacto (side-effect free).
@@ -264,49 +265,6 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             'school_term_id' => $term->id,
             'job_id' => $jobId,
         ]);
-    }
-
-    /**
-     * Constroi o mapa bruto [class_id => room_id] a partir do estado atual
-     * das turmas, resolvido da mesma forma que AllocationStateService::capture
-     * (mestre de fusao tem precedencia).
-     *
-     * @return array<int, int|null>
-     */
-    protected function collectRawAllocations(SchoolTerm $term): array
-    {
-        $allocations = [];
-
-        $classes = SchoolClass::whereBelongsTo($term)
-            ->with(['fusion.master', 'fusion.schoolclasses'])
-            ->get();
-
-        foreach ($classes as $class) {
-            $allocations[$class->id] = $this->resolveRoomId($class);
-        }
-
-        return $allocations;
-    }
-
-    protected function resolveRoomId(SchoolClass $class): ?int
-    {
-        if ($class->fusion_id && $class->fusion) {
-            $master = $class->fusion->master;
-
-            if ($master && $master->room_id) {
-                return $master->room_id;
-            }
-
-            foreach ($class->fusion->schoolclasses as $child) {
-                if ($child->room_id) {
-                    return $child->room_id;
-                }
-            }
-
-            return null;
-        }
-
-        return $class->room_id;
     }
 
     /**

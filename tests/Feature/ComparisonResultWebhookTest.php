@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AllocationState;
 use App\Models\ComparisonReport;
+use App\Models\Fusion;
 use App\Models\Room;
 use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
@@ -208,5 +209,166 @@ class ComparisonResultWebhookTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    /** @test */
+    public function result_webhook_expands_fusion_children_via_database_collection(): void
+    {
+        // Cenario que expoe a assimetria original: o solver retorna apenas o
+        // group_id da mestre da fusao. A coleta via DB (com precedencia de
+        // mestre) deve reconhecer a turma filha como alocada — coisa que a
+        // coleta direta do payload nao fazia.
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->blockA()->create(['nome' => 'A120', 'assentos' => 120]);
+
+        $master = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
+
+        $slave = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 0, 'tiptur' => 'Pós Graduação']);
+
+        $fusion = Fusion::factory()->withMaster($master)->create();
+        $master->fusion()->associate($fusion)->save();
+        $slave->fusion()->associate($fusion)->save();
+
+        $report = $this->createReport($term);
+
+        Cache::put("comparison:job:job-fusion", $report->id, now()->addHours(4));
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/comparison-result', [
+            'job_id' => 'job-fusion',
+            'status' => 'optimal',
+            'allocations' => [
+                ['group_id' => $master->id, 'room_id' => $room->id],
+            ],
+            'solve_time_seconds' => 3.2,
+        ]);
+
+        $response->assertOk();
+
+        $report->refresh();
+
+        // A filha da fusao deve constar como alocada no mapa bruto (resolvida
+        // via mestre), provando que a coleta via DB expande fusoes.
+        $this->assertArrayHasKey($slave->id, $report->solver_raw_allocations);
+        $this->assertEquals($room->id, $report->solver_raw_allocations[$slave->id]);
+        $this->assertEquals($room->id, $report->solver_raw_allocations[$master->id]);
+
+        // Ambas as turmas (mestre + filha) contribuem para a taxa de alocacao.
+        // Como a filha tem estmtr = 0 ela nao e elegivel, logo apenas a mestre
+        // conta no denominador — mas o mapa bruto deve conter ambas.
+        $this->assertEquals(100.0, $report->solver_metrics['allocation_rate']);
+    }
+
+    /** @test */
+    public function result_webhook_collects_solver_allocations_from_database_not_payload(): void
+    {
+        // Prova que a coleta simetrica percorre TODAS as turmas do semestre
+        // (nao apenas as presentes no payload), espelhando o motor legado.
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->blockA()->create(['nome' => 'A120', 'assentos' => 120]);
+
+        $allocated = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
+
+        $orphan = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 80, 'tiptur' => 'Pós Graduação']);
+
+        $report = $this->createReport($term);
+
+        Cache::put("comparison:job:job-symmetric", $report->id, now()->addHours(4));
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/comparison-result', [
+            'job_id' => 'job-symmetric',
+            'status' => 'feasible',
+            'allocations' => [
+                ['group_id' => $allocated->id, 'room_id' => $room->id],
+            ],
+            'unassigned_groups' => [$orphan->id],
+        ]);
+
+        $response->assertOk();
+
+        $report->refresh();
+
+        // O orfao (nao alocado pelo solver) deve aparecer no mapa bruto com
+        // room_id null — provando que a coleta via DB abrange toda a populacao
+        // de turmas, nao apenas as listadas no payload.
+        $this->assertArrayHasKey($orphan->id, $report->solver_raw_allocations);
+        $this->assertNull($report->solver_raw_allocations[$orphan->id]);
+
+        $this->assertEquals(50.0, $report->solver_metrics['allocation_rate']);
+    }
+
+    /** @test */
+    public function result_webhook_restores_base_state_before_applying_solver_assignments(): void
+    {
+        // Garante que o solver parte do mesmo estado base que o legado.
+        // Uma trava manual no estado base deve aparecer no mapa bruto mesmo
+        // quando o solver nao a lista explicitamente em suas alocacoes.
+        $term = SchoolTerm::factory()->create();
+        $manualRoom = Room::factory()->blockA()->create(['nome' => 'A200', 'assentos' => 200]);
+        $solverRoom = Room::factory()->blockA()->create(['nome' => 'A120', 'assentos' => 120]);
+
+        $manualClass = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 50, 'tiptur' => 'Pós Graduação']);
+
+        $autoClass = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [
+                $manualClass->id => $manualRoom->id,
+                $autoClass->id => null,
+            ],
+            'solver_log_id' => null,
+        ]);
+
+        $report = ComparisonReport::create([
+            'school_term_id' => $term->id,
+            'base_allocation_state_id' => $baseState->id,
+            'status' => 'processing',
+        ]);
+
+        Cache::put("comparison:job:job-basestate", $report->id, now()->addHours(4));
+
+        // O solver aloca apenas a turma automatica; a manual ja estava travada.
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/comparison-result', [
+            'job_id' => 'job-basestate',
+            'status' => 'optimal',
+            'allocations' => [
+                ['group_id' => $autoClass->id, 'room_id' => $solverRoom->id],
+            ],
+        ]);
+
+        $response->assertOk();
+
+        $report->refresh();
+
+        // A trava manual do estado base deve ser reconhecida (o solver nao
+        // precisa relista-la — a restauracao do estado base a colocou no DB).
+        $this->assertEquals($manualRoom->id, $report->solver_raw_allocations[$manualClass->id]);
+        $this->assertEquals($solverRoom->id, $report->solver_raw_allocations[$autoClass->id]);
+
+        // Banco de producao permanece intacto (rollback).
+        $this->assertNull($manualClass->fresh()->room_id);
+        $this->assertNull($autoClass->fresh()->room_id);
+
+        // Ambas alocadas => taxa 100%.
+        $this->assertEquals(100.0, $report->solver_metrics['allocation_rate']);
     }
 }

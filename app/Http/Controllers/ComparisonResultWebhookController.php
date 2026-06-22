@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\ComparisonReport;
 use App\Services\AllocationEvaluatorService;
+use App\Services\AllocationStateService;
+use App\Services\ComparisonAllocationCollector;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ComparisonResultWebhookController extends Controller
@@ -15,10 +18,19 @@ class ComparisonResultWebhookController extends Controller
      * Benchmarking (modulo de comparacao).
      *
      * Diferente do webhook de alocacao de producao, este controlador NUNCA
-     * modifica as turmas em `school_classes`. Ele apenas extrai as alocacoes
-     * retornadas, submete-as ao motor de avaliacao isomorfo
-     * `AllocationEvaluatorService` e atualiza o `ComparisonReport` ativo,
-     * transicionando seu status para `completed` (ou `failed`).
+     * modifica permanentemente as turmas em `school_classes`. Ele adota a
+     * mesma politica de coleta do motor legado: restaura o estado base,
+     * escreve as alocacoes do solver em `school_classes` dentro de uma
+     * transacao reversivel, coleta o mapa [class_id => room_id] do banco
+     * (com precedencia de mestre de fusao) e entao REVERTE a transacao.
+     * O mapa coletado em memoria e submetido ao motor de avaliacao isomorfo
+     * `AllocationEvaluatorService` e o `ComparisonReport` e finalizado.
+     *
+     * Esta simetria garante que ambos os motores sejam avaliados a partir de
+     * uma unica fonte de verdade (o banco de dados), eliminando a assimetria
+     * que ocorria quando o solver era avaliado diretamente do payload — onde
+     * turmas filhas de fusao apareciam como nao-alocadas por nao constarem
+     * individualmente no array de alocacoes do solver.
      */
     public function __invoke(Request $request)
     {
@@ -32,12 +44,15 @@ class ComparisonResultWebhookController extends Controller
             'allocations' => 'nullable|array',
             'allocations.*.group_id' => 'required_with:allocations|integer',
             'allocations.*.room_id' => 'required_with:allocations|integer',
+            'unassigned_groups' => 'nullable|array',
+            'unassigned_groups.*' => 'integer',
             'solve_time_seconds' => 'nullable|numeric|min:0',
         ]);
 
         $jobId = $validated['job_id'];
         $status = $validated['status'];
         $assignments = $validated['allocations'] ?? [];
+        $unassignedGroups = $validated['unassigned_groups'] ?? [];
         $solveTimeSeconds = $validated['solve_time_seconds'] ?? null;
 
         $reportId = $this->findComparisonReportIdByJobId($jobId);
@@ -89,12 +104,58 @@ class ComparisonResultWebhookController extends Controller
         }
 
         // Converte o array de alocacoes do solver [{group_id, room_id}] no
-        // mapa [school_class_id => room_id] esperado pelo avaliador. O
-        // group_id do solver corresponde ao id da SchoolClass (mesma
-        // convensao adotada pelo AllocationResultWebhookController).
-        $rawAllocations = [];
+        // formato esperado pela politica de escrita. O group_id do solver
+        // corresponde ao id da SchoolClass mestre da fusao (mesma convensao
+        // do AllocationResultWebhookController).
+        $solverAssignments = [];
         foreach ($assignments as $assignment) {
-            $rawAllocations[(int) $assignment['group_id']] = (int) $assignment['room_id'];
+            $solverAssignments[] = [
+                'group_id' => (int) $assignment['group_id'],
+                'room_id' => (int) $assignment['room_id'],
+            ];
+        }
+
+        $baseState = $report->baseAllocationState;
+
+        if ($baseState === null) {
+            $report->update(['status' => 'failed']);
+
+            Log::error('ComparisonResultWebhook: comparison report missing base allocation state', [
+                'job_id' => $jobId,
+                'report_id' => $report->id,
+            ]);
+
+            return response()->json(['message' => 'Failed to evaluate solver result'], 500);
+        }
+
+        try {
+            // Politica simetrica ao motor legado: restaura o estado base,
+            // escreve as alocacoes do solver no banco, coleta o mapa pela
+            // mesma regua (DB com precedencia de mestre de fusao) e reverte.
+            DB::beginTransaction();
+
+            AllocationStateService::restore($baseState);
+
+            $collector = new ComparisonAllocationCollector();
+            $collector->applySolverAssignmentsToDatabase($solverAssignments, $unassignedGroups);
+
+            $rawAllocations = $collector->collectFromDatabase($report->schoolTerm);
+
+            DB::rollBack();
+        } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            $report->update(['status' => 'failed']);
+
+            Log::error('ComparisonResultWebhook: failed to collect solver allocations from database', [
+                'job_id' => $jobId,
+                'report_id' => $report->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['message' => 'Failed to evaluate solver result'], 500);
         }
 
         try {

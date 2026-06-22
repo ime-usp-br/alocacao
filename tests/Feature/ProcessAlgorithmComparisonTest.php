@@ -6,6 +6,7 @@ use App\Jobs\ProcessAlgorithmComparison;
 use App\Models\AllocationState;
 use App\Models\ClassSchedule;
 use App\Models\ComparisonReport;
+use App\Models\Fusion;
 use App\Models\Room;
 use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
@@ -437,6 +438,65 @@ class ProcessAlgorithmComparisonTest extends TestCase
 
             return $preassigned->contains($manualRoom->id);
         });
+    }
+
+    /** @test */
+    public function it_collects_legacy_allocations_expanding_fusion_children(): void
+    {
+        // Garante que a coleta do legado (agora via ComparisonAllocationCollector)
+        // expande fusoes: a filha sem room_id proprio deve ser resolvida para
+        // a sala do mestre, constando como alocada no mapa bruto.
+        $term = $this->latestTerm();
+
+        $room = Room::factory()->blockA()->create(['assentos' => 100]);
+
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+
+        $master = SchoolClass::factory()
+            ->undergraduate()
+            ->withoutRoom()
+            ->withSchoolTerm($term)
+            ->create(['estmtr' => 30]);
+        $master->classschedules()->attach($schedule);
+
+        $slave = SchoolClass::factory()
+            ->undergraduate()
+            ->withoutRoom()
+            ->withSchoolTerm($term)
+            ->create(['estmtr' => 30]);
+
+        $fusion = Fusion::factory()->withMaster($master)->create();
+        $master->fusion()->associate($fusion)->save();
+        $slave->fusion()->associate($fusion)->save();
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [
+                $master->id => null,
+                $slave->id => null,
+            ],
+            'solver_log_id' => null,
+        ]);
+
+        $this->fakeSolverSuccess();
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        $report = ComparisonReport::first();
+
+        // Ambas as turmas (mestre + filha) devem ter a mesma sala no mapa
+        // bruto, resolvida via precedencia do mestre de fusao.
+        $this->assertNotNull($report->legacy_raw_allocations[$master->id]);
+        $this->assertEquals(
+            $report->legacy_raw_allocations[$master->id],
+            $report->legacy_raw_allocations[$slave->id]
+        );
+
+        // Banco de producao permanece intacto (rollback).
+        $this->assertNull($master->fresh()->room_id);
+        $this->assertNull($slave->fresh()->room_id);
     }
 
     private function latestTerm(): SchoolTerm
