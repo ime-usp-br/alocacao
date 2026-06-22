@@ -53,6 +53,7 @@ class DistributesRoomRequest extends FormRequest
     {
         return [
             'sync_enrollment' => 'nullable|boolean',
+            'use_legacy' => 'nullable|boolean',
 
             'rooms_id' => 'required|array',
             'rooms_id.*' => 'required|numeric',

@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Session;
 use App\Jobs\ProcessRoomDistribution;
+use App\Jobs\ProcessLegacyRoomDistribution;
 use App\Models\Requisition;
 use App\Models\Reservation;
 use App\Models\Room;
@@ -261,6 +262,16 @@ class RoomController extends Controller
             return back();
         }
 
+        if ((bool) ($validated['use_legacy'] ?? false)) {
+            ProcessLegacyRoomDistribution::dispatch(
+                $schoolterm->id,
+                $validated['rooms_id']
+            );
+
+            Session::put("alert-info", "A distribuição legada de salas foi iniciada. Aguarde a conclusão no botão abaixo.");
+            return back();
+        }
+
         ProcessRoomDistribution::dispatch(
             $schoolterm->id,
             $validated['rooms_id'],
@@ -294,6 +305,11 @@ class RoomController extends Controller
 
         if (in_array($cached['status'], ['completed', 'error', 'timeout'])) {
             Session::put("alert-info", "A distribuição já foi finalizada.");
+            return back();
+        }
+
+        if (($cached['mode'] ?? null) === 'legacy') {
+            Session::put("alert-warning", "A distribuição legada não pode ser cancelada manualmente. Aguarde a conclusão do job na fila.");
             return back();
         }
 
@@ -356,6 +372,11 @@ class RoomController extends Controller
 
         if (in_array($cached['status'], ['completed'])) {
             Session::put("alert-info", "A distribuição já foi concluída.");
+            return back();
+        }
+
+        if (($cached['mode'] ?? null) === 'legacy') {
+            Session::put("alert-warning", "O resgate manual é exclusivo do solver. Para a distribuição legada, aguarde o job na fila.");
             return back();
         }
 

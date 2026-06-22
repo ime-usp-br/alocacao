@@ -420,10 +420,23 @@ $tooltips = [
                         </div>
                     </div>
                 </div>
+                <div class="p-3 border-left border-right border-bottom rounded-bottom mt-2">
+                    <div class="custom-control custom-switch">
+                        <input type="hidden" name="use_legacy" value="0" form="distributesForm">
+                        <input type="checkbox" class="custom-control-input" id="use_legacy"
+                            name="use_legacy" value="1"
+                            form="distributesForm">
+                        <label class="custom-control-label font-weight-bold" for="use_legacy"
+                            data-toggle="tooltip" data-placement="top"
+                            title="Usa a heuristica antiga (prioridades + ordem por assentos) em vez do solver CP-SAT. Mais lento e sem garantia de otimalidade. Util apenas se o solver estiver indisponivel.">
+                            Usar distribuicao legada (sem solver)
+                        </label>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer bg-light">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
-                <button type="submit" form="distributesForm" class="btn btn-primary"
+                <button type="submit" form="distributesForm" class="btn btn-primary" id="btn-exec-distribution"
                     onclick="return confirm('Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!')">
                     Executar Solver
                 </button>
@@ -718,6 +731,29 @@ $( function() {
     }).on('hidden.bs.modal', function () {
         $(this).find('[data-toggle="tooltip"]').tooltip('dispose');
     });
+
+    function toggleLegacyMode() {
+        var legacy = $('#use_legacy').is(':checked');
+        var btn = $('#btn-exec-distribution');
+        var softTab = $('#tab-soft-link');
+        var estTab = $('#tab-estimativa-link');
+
+        if (legacy) {
+            btn.text('Executar Distribuicao Legada');
+            softTab.addClass('disabled').css('pointer-events', 'none').css('opacity', '0.5');
+            estTab.addClass('disabled').css('pointer-events', 'none').css('opacity', '0.5');
+            if ($('#tab-soft').hasClass('show active') || $('#tab-estimativa').hasClass('show active')) {
+                $('#tab-hard-link').tab('show');
+            }
+        } else {
+            btn.text('Executar Solver');
+            softTab.removeClass('disabled').css('pointer-events', '').css('opacity', '');
+            estTab.removeClass('disabled').css('pointer-events', '').css('opacity', '');
+        }
+    }
+
+    $('#use_legacy').on('change', toggleLegacyMode);
+    toggleLegacyMode();
 });
 </script>
 @endsection
