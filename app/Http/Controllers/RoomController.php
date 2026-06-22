@@ -272,6 +272,30 @@ class RoomController extends Controller
             return back();
         }
 
+        $solverUrl = rtrim(config('alocacao.solver.url'), '/');
+        $apiToken = config('alocacao.solver.api_token');
+        $verifySsl = config('alocacao.solver.verify_ssl', true);
+
+        try {
+            $healthCheck = Http::withHeaders(['Accept' => 'application/json'])
+                ->timeout(5)
+                ->when(! $verifySsl, fn ($r) => $r->withoutVerifying())
+                ->get("{$solverUrl}/health");
+
+            if (! $healthCheck->ok() || ($healthCheck->json('status') ?? '') !== 'ok') {
+                Session::put("alert-danger", "O solver de otimização não está respondendo. Comunique o administrador do sistema. Você ainda pode usar a distribuição legada (opção 'Usar distribuicao legada (sem solver)' no formulário).");
+                return back();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('RoomController@distributes: solver health check failed', [
+                'solver_url' => $solverUrl,
+                'error' => $e->getMessage(),
+            ]);
+
+            Session::put("alert-danger", "O solver de otimização não está respondendo. Comunique o administrador do sistema. Você ainda pode usar a distribuição legada (opção 'Usar distribuicao legada (sem solver)' no formulário).");
+            return back();
+        }
+
         ProcessRoomDistribution::dispatch(
             $schoolterm->id,
             $validated['rooms_id'],
