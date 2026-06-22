@@ -15,6 +15,7 @@ use App\Http\Controllers\CurriculumController;
 use App\Http\Controllers\SpecialOfferController;
 use App\Http\Controllers\SolverLogController;
 use App\Http\Controllers\AllocationStateController;
+use App\Http\Controllers\ComparisonReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -98,3 +99,5 @@ Route::get("curriculum", [CurriculumController::class, "index"])->name("curricul
 Route::resource("specialoffers", SpecialOfferController::class);
 
 Route::resource('solverlogs', SolverLogController::class)->only(['index', 'show']);
+
+Route::resource('comparison-reports', ComparisonReportController::class)->only(['index', 'show']);

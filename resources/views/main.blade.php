@@ -90,6 +90,9 @@
                 <li>
                     <a href="{{ route('solverlogs.index') }}">Logs Solver</a>
                 </li>
+                <li>
+                    <a href="{{ route('comparison-reports.index') }}">Comparação de Algoritmos</a>
+                </li>
             @endif
             <li>
                 <form style="padding:0px;" action="{{ route('logout') }}" method="POST" id="logout_form2">
