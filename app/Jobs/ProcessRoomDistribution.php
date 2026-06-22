@@ -139,12 +139,22 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
             now()->addHours(4)
         );
 
+        // Conta as alocações manuais existentes antes do envio: turmas do
+        // semestre (não externas) que já têm sala fixada manualmente. Lemos do
+        // banco e não do payload porque turmas excluídas do solver (ex. MAE0116)
+        // também podem ter alocação manual e devem ser contabilizadas.
+        $manualCount = SchoolClass::whereBelongsTo($term)
+            ->where('externa', false)
+            ->whereNotNull('room_id')
+            ->count();
+
         // Persist the payload for later debugging via admin view
         $solverLog = SolverLog::create([
             'school_term_id' => $this->schoolTermId,
             'job_id' => $jobId,
             'payload' => $payload,
             'status' => 'solving',
+            'manual_count' => $manualCount,
             'dispatched_at' => now(),
         ]);
 

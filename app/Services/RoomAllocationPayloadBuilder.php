@@ -132,7 +132,7 @@ class RoomAllocationPayloadBuilder
     {
         return $classes
             ->reject(fn ($class) => $class->externa)
-            ->reject(fn ($class) => $class->coddis === 'MAE0116')
+            ->reject(fn ($class) => $class->coddis === 'MAE0116' && $class->room_id === null)
             ->sortBy('id')
             ->values();
     }

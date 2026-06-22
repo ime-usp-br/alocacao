@@ -106,6 +106,41 @@ class DistributionFlowTest extends TestCase
     }
 
     /** @test */
+    public function dispatch_records_manual_count_based_on_preassigned_groups()
+    {
+        $term = SchoolTerm::factory()->create();
+        $roomA = Room::factory()->create();
+        $roomB = Room::factory()->create();
+
+        $manualClass = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => $roomA->id,
+            'externa' => false,
+        ]);
+        $autoClass = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+            'externa' => false,
+        ]);
+        $schedule = ClassSchedule::factory()->seg()->morning()->create();
+        $manualClass->classschedules()->attach($schedule);
+        $autoClass->classschedules()->attach($schedule);
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response([
+                'job_id' => 'flow-manual-count',
+            ], 202),
+        ]);
+
+        $this->actingAsOperator()
+            ->patch('/rooms/distributes', ['rooms_id' => [$roomB->id]]);
+
+        $solverLog = \App\Models\SolverLog::where('job_id', 'flow-manual-count')->first();
+        $this->assertNotNull($solverLog);
+        $this->assertEquals(1, $solverLog->manual_count);
+    }
+
+    /** @test */
     public function distributes_request_rejects_invalid_solver_config()
     {
         $room = Room::factory()->create();

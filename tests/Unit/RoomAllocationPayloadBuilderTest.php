@@ -197,7 +197,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
     }
 
     /** @test */
-    public function it_excludes_mae0116()
+    public function it_excludes_mae0116_without_room_but_includes_with_room_as_occupancy()
     {
         $term = SchoolTerm::factory()->create();
         $room = Room::factory()->create();
@@ -205,18 +205,28 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         $excluded = SchoolClass::factory()->create([
             'school_term_id' => $term->id,
             'coddis' => 'MAE0116',
+            'room_id' => null,
+        ]);
+        $manualRoom = Room::factory()->create();
+        $manualMae = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'coddis' => 'MAE0116',
+            'room_id' => $manualRoom->id,
         ]);
         $normal = SchoolClass::factory()->create([
             'school_term_id' => $term->id,
             'coddis' => 'MAC0110',
+            'room_id' => null,
         ]);
 
         $builder = new RoomAllocationPayloadBuilder();
         $payload = $builder->build($term, [$room->id]);
 
-        $classIds = array_column($payload['groups'], 'id');
-        $this->assertNotContains($excluded->id, $classIds);
-        $this->assertContains($normal->id, $classIds);
+        $groups = collect($payload['groups'])->keyBy('id');
+        $this->assertNotContains($excluded->id, $groups->keys());
+        $this->assertContains($manualMae->id, $groups->keys());
+        $this->assertEquals($manualRoom->id, $groups[$manualMae->id]['preassigned_room_id']);
+        $this->assertContains($normal->id, $groups->keys());
     }
 
     /** @test */
@@ -502,7 +512,7 @@ class RoomAllocationPayloadBuilderTest extends TestCase
         ]);
         SchoolClass::factory()->create([
             'school_term_id' => $term->id,
-            'room_id' => $room->id,
+            'room_id' => null,
             'coddis' => 'MAE0116',
         ]);
 

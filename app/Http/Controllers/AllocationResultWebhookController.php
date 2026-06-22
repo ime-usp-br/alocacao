@@ -162,7 +162,6 @@ class AllocationResultWebhookController extends Controller
             'status' => $status,
             'allocations_count' => $autoCount,
             'unassigned_count' => count($unassignedGroups) - $manualCount,
-            'manual_count' => $manualCount,
             'responded_at' => now(),
         ]);
 

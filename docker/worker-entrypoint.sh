@@ -24,8 +24,9 @@ echo "[worker] Aguardando MySQL..."
 until php -r "new PDO('mysql:host=${DB_HOST:-mysql};port=${DB_PORT:-3306}', '${DB_USERNAME:-laravel}', '${DB_PASSWORD:-root}');" 2>/dev/null; do
     sleep 2
 done
-echo "[worker] MySQL pronto. Iniciando queue:work..."
+echo "[worker] MySQL pronto. Iniciando queue:listen..."
 
-# Executa o worker como www-data para evitar conflitos de permissão
-# com o php-fpm (que também roda como www-data).
-exec gosu "${LARAVEL_USER}" php artisan queue:work --tries=3 --sleep=3 --max-time=3600
+# Usa queue:listen em vez de queue:work para desenvolvimento: o listen
+# relê o código a cada job, então mudanças nos arquivos PHP entram em
+# vigor sem precisar reiniciar o container.
+exec gosu "${LARAVEL_USER}" php artisan queue:listen --tries=3 --sleep=3
