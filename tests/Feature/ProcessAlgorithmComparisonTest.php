@@ -11,11 +11,36 @@ use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ProcessAlgorithmComparisonTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['alocacao.solver.url' => 'http://solver.test']);
+        config(['alocacao.solver.api_token' => 'test-token']);
+    }
+
+    /**
+     * Registra um fake do Solver que responde com sucesso (job_id valido),
+     * mantendo o relatorio em 'processing'. Deve ser chamado explicitamente
+     * nos testes que disparam o Job ate o fim esperando sucesso, pois o
+     * Http::fake do Laravel avalia todos os callbacks registrados (logo um
+     * fake default no setUp seria sempre vencedor sobre fakes de falha).
+     */
+    protected function fakeSolverSuccess(string $jobId = 'comparison-job-1'): void
+    {
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response([
+                'job_id' => $jobId,
+            ], 202),
+        ]);
+    }
 
     /** @test */
     public function it_has_correct_unique_id()
@@ -36,6 +61,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
             'allocations' => [$class->id => null],
             'solver_log_id' => null,
         ]);
+
+        $this->fakeSolverSuccess();
 
         $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
         $job->handle();
@@ -60,6 +87,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
             'solver_log_id' => null,
         ]);
 
+        $this->fakeSolverSuccess();
+
         $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
         $job->handle();
 
@@ -78,7 +107,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
         $this->assertArrayHasKey($class->id, $report->legacy_raw_allocations);
         $this->assertEquals($room->id, $report->legacy_raw_allocations[$class->id]);
 
-        // Solver ainda nao foi avaliado neste fluxo (issue dedicada).
+        // Solver ainda nao foi avaliado neste fluxo (webhook dedicado).
+        // O disparo apenas mantem o relatorio em 'processing'.
         $this->assertNull($report->solver_metrics);
         $this->assertNull($report->solver_raw_allocations);
     }
@@ -98,6 +128,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
             'allocations' => [$class->id => null],
             'solver_log_id' => null,
         ]);
+
+        $this->fakeSolverSuccess();
 
         $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
         $job->handle();
@@ -131,6 +163,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
             'solver_log_id' => null,
         ]);
 
+        $this->fakeSolverSuccess();
+
         $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
         $job->handle();
 
@@ -152,6 +186,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
             'allocations' => [$class->id => null],
             'solver_log_id' => null,
         ]);
+
+        $this->fakeSolverSuccess();
 
         $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
         $job->handle();
@@ -182,6 +218,8 @@ class ProcessAlgorithmComparisonTest extends TestCase
         $class->room_id = null;
         $class->save();
         $this->assertNull($class->fresh()->room_id);
+
+        $this->fakeSolverSuccess();
 
         $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
         $job->handle();
@@ -237,6 +275,168 @@ class ProcessAlgorithmComparisonTest extends TestCase
         }
 
         $this->assertEquals(0, ComparisonReport::count());
+    }
+
+    /** @test */
+    public function it_dispatches_solver_payload_with_comparison_webhook_url()
+    {
+        $term = $this->latestTerm();
+        [$room, $class] = $this->allocatableClass($term);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [$class->id => null],
+            'solver_log_id' => null,
+        ]);
+
+        $this->fakeSolverSuccess();
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        $expectedWebhook = route('webhooks.comparison.result');
+
+        Http::assertSent(function ($request) use ($expectedWebhook, $room) {
+            $data = $request->data();
+            $this->assertArrayHasKey('meta', $data);
+            $this->assertArrayHasKey('webhook_url', $data['meta']);
+            $this->assertEquals($expectedWebhook, $data['meta']['webhook_url']);
+            $this->assertEquals([$room->id], array_column($data['rooms'], 'id'));
+
+            return true;
+        });
+    }
+
+    /** @test */
+    public function it_keeps_report_processing_and_caches_job_index_on_successful_dispatch()
+    {
+        $term = $this->latestTerm();
+        [$room, $class] = $this->allocatableClass($term);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [$class->id => null],
+            'solver_log_id' => null,
+        ]);
+
+        $this->fakeSolverSuccess();
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        $report = ComparisonReport::first();
+
+        $this->assertEquals('processing', $report->status);
+        $this->assertEquals($report->id, Cache::get('comparison:job:comparison-job-1'));
+    }
+
+    /** @test */
+    public function it_marks_report_failed_when_solver_returns_http_error()
+    {
+        $term = $this->latestTerm();
+        [$room, $class] = $this->allocatableClass($term);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [$class->id => null],
+            'solver_log_id' => null,
+        ]);
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response('Internal Server Error', 500),
+        ]);
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        $report = ComparisonReport::first();
+
+        $this->assertEquals('failed', $report->status);
+        // Legacy metrics ainda devem estar persistidas (nao relanca).
+        $this->assertNotNull($report->legacy_metrics);
+    }
+
+    /** @test */
+    public function it_marks_report_failed_when_solver_response_lacks_job_id()
+    {
+        $term = $this->latestTerm();
+        [$room, $class] = $this->allocatableClass($term);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [$class->id => null],
+            'solver_log_id' => null,
+        ]);
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response(['status' => 'ok'], 200),
+        ]);
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        $this->assertEquals('failed', ComparisonReport::first()->status);
+    }
+
+    /** @test */
+    public function it_marks_report_failed_when_solver_is_offline()
+    {
+        $term = $this->latestTerm();
+        [$room, $class] = $this->allocatableClass($term);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [$class->id => null],
+            'solver_log_id' => null,
+        ]);
+
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('Could not resolve host');
+        });
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        $report = ComparisonReport::first();
+
+        $this->assertEquals('failed', $report->status);
+        $this->assertNotNull($report->legacy_metrics);
+    }
+
+    /** @test */
+    public function it_builds_solver_payload_from_base_state_preallocations()
+    {
+        $term = $this->latestTerm();
+        [$room, $class] = $this->allocatableClass($term);
+
+        // Pre-alocacao manual (trava) definida no estado base deve chegar ao
+        // Solver como preassigned_room_id.
+        $manualRoom = Room::factory()->blockA()->create(['assentos' => 200]);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [$class->id => $manualRoom->id],
+            'solver_log_id' => null,
+        ]);
+
+        $this->fakeSolverSuccess();
+
+        $job = new ProcessAlgorithmComparison($term->id, $baseState->id, [$room->id]);
+        $job->handle();
+
+        Http::assertSent(function ($request) use ($manualRoom) {
+            $data = $request->data();
+            $groups = $data['groups'] ?? [];
+            $preassigned = collect($groups)->pluck('preassigned_room_id')->filter();
+
+            return $preassigned->contains($manualRoom->id);
+        });
     }
 
     private function latestTerm(): SchoolTerm

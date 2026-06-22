@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\SchoolTerm;
 use App\Services\AllocationEvaluatorService;
 use App\Services\AllocationStateService;
+use App\Services\RoomAllocationPayloadBuilder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -16,6 +17,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use romanzipp\QueueMonitor\Traits\IsMonitored;
 
@@ -70,6 +72,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         $previousCache = Cache::get($cacheKey);
 
         $legacyAllocations = [];
+        $solverPayload = null;
         $solveStart = microtime(true);
 
         try {
@@ -79,17 +82,26 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             //    partida identico para a heuristica legada.
             AllocationStateService::restore($baseState);
 
-            // 2. Executa a heuristica legada sincronamente dentro do
+            // 2. Construi o payload do Solver CP-SAT A PARTIR do estado base
+            //    restaurado. As pre-alocacoes manuais (room_id) presentes no
+            //    estado base sao capturadas como `preassigned_room_id` no
+            //    payload, garantindo que o Solver inicie do mesmo ponto que a
+            //    heuristica legada. A construcao e pura (leituras), logo o
+            //    rollback posterior nao afeta o array em memoria.
+            $solverPayload = (new RoomAllocationPayloadBuilder())
+                ->build($term, $this->roomIds);
+
+            // 3. Executa a heuristica legada sincronamente dentro do
             //    contexto transacional. Suas escritas em school_classes
             //    ficam confinadas a esta transacao reversivel.
             $legacyJob = new ProcessLegacyRoomDistribution($term->id, $this->roomIds);
             $legacyJob->handle();
 
-            // 3. Coleta imediatamente o mapa resultante [class_id => room_id]
+            // 4. Coleta imediatamente o mapa resultante [class_id => room_id]
             //    antes de qualquer rollback.
             $legacyAllocations = $this->collectRawAllocations($term);
 
-            // 4. Aborta a transacao IMEDIATAMENTE para garantir que o banco
+            // 5. Aborta a transacao IMEDIATAMENTE para garantir que o banco
             //    de producao permaneca intacto (side-effect free).
             DB::rollBack();
         } catch (\Throwable $e) {
@@ -107,13 +119,13 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         $solveTime = microtime(true) - $solveStart;
         $this->restoreCache($cacheKey, $previousCache);
 
-        // 5. Avaliacao isomorfica do resultado legado via Evaluator (puro,
+        // 6. Avaliacao isomorfica do resultado legado via Evaluator (puro,
         //    sem escrita em DB). O mapa coletado ja esta em memoria, logo o
         //    rollback do banco nao o afeta.
         $evaluator = new AllocationEvaluatorService();
         $legacyMetrics = $evaluator->evaluate($term, $legacyAllocations, $solveTime);
 
-        // 6. Persiste as metricas e o mapa bruto do legado. O relatorio
+        // 7. Persiste as metricas e o mapa bruto do legado. O relatorio
         //    permanece em 'processing' ate que o solver seja avaliado
         //    (fluxo do webhook, tratado em issue dedicada).
         $report->update([
@@ -126,6 +138,117 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             'school_term_id' => $term->id,
             'base_allocation_state_id' => $baseState->id,
             'allocated_count' => count(array_filter($legacyAllocations, fn ($id) => $id !== null)),
+        ]);
+
+        // 8. Disparo do Solver CP-SAT para Benchmarking. O payload foi
+        //    construido a partir do estado base (passo 2) e agora e enviado
+        //    ao microsservico Python, apontando o webhook de retorno para a
+        //    rota exclusiva de comparacao. Falhas de conexao/disparo
+        //    finalizam o relatorio como 'failed' (evitando Jobs zumbis);
+        //    sucesso mantem 'processing' para aguardar o retorno assincrono.
+        $this->dispatchSolver($term, $report, $solverPayload);
+    }
+
+    /**
+     * Dispara o payload do Solver CP-SAT (microsservico Python) para fins de
+     * Benchmarking, injetando no bloco `meta` a URL do webhook de comparacao.
+     *
+     * O envio e best-effort em relacao ao status do relatorio: qualquer falha
+     * de conexao, HTTP de erro ou resposta invalida marca o relatorio como
+     * 'failed' e encerra o Job de forma limpa (sem relancar), preservando as
+     * legacy_metrics ja persistidas. Em sucesso, o relatorio permanece
+     * 'processing' aguardando o callback assincrono do Solver.
+     */
+    protected function dispatchSolver(SchoolTerm $term, ComparisonReport $report, ?array $payload): void
+    {
+        if ($payload === null) {
+            $report->update(['status' => 'failed']);
+            Log::error('ProcessAlgorithmComparison: solver payload missing', [
+                'comparison_report_id' => $report->id,
+                'school_term_id' => $term->id,
+            ]);
+
+            return;
+        }
+
+        $solverUrl = rtrim((string) config('alocacao.solver.url'), '/');
+        $apiToken = config('alocacao.solver.api_token');
+        $timeout = config('alocacao.solver.timeout', 60);
+
+        $webhookUrl = route('webhooks.comparison.result');
+
+        // Injeta no bloco meta do payload a URL de webhook especifica do
+        // escopo de Benchmarking (em vez da rota padrao de salvamento).
+        $payload['meta']['webhook_url'] = $webhookUrl;
+
+        Log::info('ProcessAlgorithmComparison: dispatching to solver', [
+            'comparison_report_id' => $report->id,
+            'school_term_id' => $term->id,
+            'solver_url' => $solverUrl,
+            'webhook_url' => $webhookUrl,
+        ]);
+
+        try {
+            $http = Http::withHeaders([
+                    'X-Webhook-Token' => $apiToken,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout($timeout);
+
+            if (! config('alocacao.solver.verify_ssl', true)) {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->post("{$solverUrl}/api/v1/solve", $payload);
+        } catch (\Throwable $e) {
+            $report->update(['status' => 'failed']);
+            Log::error('ProcessAlgorithmComparison: solver connection failed', [
+                'comparison_report_id' => $report->id,
+                'school_term_id' => $term->id,
+                'solver_url' => $solverUrl,
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        if (! $response->successful()) {
+            $report->update(['status' => 'failed']);
+            Log::error('ProcessAlgorithmComparison: solver returned error', [
+                'comparison_report_id' => $report->id,
+                'school_term_id' => $term->id,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return;
+        }
+
+        $jobId = $response->json('job_id');
+
+        if (empty($jobId)) {
+            $report->update(['status' => 'failed']);
+            Log::error('ProcessAlgorithmComparison: solver response missing job_id', [
+                'comparison_report_id' => $report->id,
+                'school_term_id' => $term->id,
+                'body' => $response->json(),
+            ]);
+
+            return;
+        }
+
+        // Indice secundario para que o webhook de comparacao consiga
+        // resolver job_id -> comparison_report_id no retorno assincrono.
+        Cache::put(
+            "comparison:job:{$jobId}",
+            $report->id,
+            now()->addHours(4)
+        );
+
+        Log::info('ProcessAlgorithmComparison: solver dispatched successfully', [
+            'comparison_report_id' => $report->id,
+            'school_term_id' => $term->id,
+            'job_id' => $jobId,
         ]);
     }
 

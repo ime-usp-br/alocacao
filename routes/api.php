@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AllocationProgressWebhookController;
 use App\Http\Controllers\AllocationResultWebhookController;
+use App\Http\Controllers\ComparisonResultWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,3 +26,6 @@ Route::post('/webhooks/allocation-progress', AllocationProgressWebhookController
 
 Route::post('/webhooks/allocation-result', AllocationResultWebhookController::class)
     ->name('webhooks.allocation.result');
+
+Route::post('/webhooks/comparison-result', ComparisonResultWebhookController::class)
+    ->name('webhooks.comparison.result');
