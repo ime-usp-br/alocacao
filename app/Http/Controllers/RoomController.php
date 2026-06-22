@@ -268,7 +268,7 @@ class RoomController extends Controller
             (bool) ($validated['sync_enrollment'] ?? false)
         );
 
-        Session::put("alert-info", "A distribuição de salas foi iniciada. Acompanhe o progresso na barra acima.");
+        Session::put("alert-info", "A distribuição de salas foi iniciada. Aguarde a conclusão no botão abaixo.");
         return back();
     }
 

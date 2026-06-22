@@ -16,6 +16,7 @@
             @if (count($salas) > 0)
                 <div class="d-flex justify-content-center">
                     <div class="col-md-6">
+                        <div id="rooms-flash" style="margin-bottom: 20px;"></div>
                         <div class="float-right" style="margin-bottom: 20px;">
                             <!--
                             <form style="display: inline;"  action="{{ route('rooms.makeReport') }}" method="GET"
@@ -37,7 +38,7 @@
                                 data-toggle="modal"
                                 data-target="#solverConfigModal"
                             >
-                                Distribuir Turmas
+                                <i class="fas fa-spinner fa-spin" id="btn-distributes-spinner" style="display: none; margin-right: 6px;"></i>Distribuir Turmas
                             </button>
 
                             <form id="distributesForm" style="display: none;" action="{{ route('rooms.distributes') }}" method="POST"
@@ -436,6 +437,8 @@ $tooltips = [
 @parent
 <script>
 $( function() {       
+    $('#rooms-flash').append($('#flash-message').html());
+    $('#flash-message').empty();
     function progress() {
         $.ajax({
             url: window.location.origin+'/monitor/getReportProcess',
@@ -497,8 +500,8 @@ $( function() {
                                     document.getElementById("btn-distributes").disabled = false;
                                     document.getElementById("btn-empty").disabled = false;
                                     $( "#progressbar" ).remove();
-                                    $('#flash-message').empty();
-                                    $('#flash-message').append("<p id='success-message' class='alert alert-success'>As reservas foram feitas com sucesso.</p>");
+                                    $('#rooms-flash').empty();
+                                    $('#rooms-flash').append("<p id='success-message' class='alert alert-success'>As reservas foram feitas com sucesso.</p>");
                                 }
                             });
                         }
@@ -512,8 +515,8 @@ $( function() {
                         var schoolclass = JSON.parse(json["data"])["schoolclass"];
                         var sala = JSON.parse(json["data"])["room"];
 
-                        $('#flash-message').empty();
-                        $('#flash-message').append("<p id='error-message' class='alert alert-danger'>Não foi possivel realizar as reservas. A disciplina "+
+                        $('#rooms-flash').empty();
+                        $('#rooms-flash').append("<p id='error-message' class='alert alert-danger'>Não foi possivel realizar as reservas. A disciplina "+
                             schoolclass.coddis+" turma "+schoolclass.codtur+" não conseguiu reserva na sala "+sala+". Entre em contato com o administrador. </p>");
                     }else if(json['failed']){
                         document.getElementById("btn-reservation").disabled = false;
@@ -521,8 +524,8 @@ $( function() {
                         document.getElementById("btn-distributes").disabled = false;
                         document.getElementById("btn-empty").disabled = false;
                         $( "#progressbar" ).remove();
-                        $('#flash-message').empty();
-                        $('#flash-message').append("<p id='error-message' class='alert alert-danger'>Não foi possivel realizar as reservas. Falha critica. Entre em contato com o administrador. </p>");
+                        $('#rooms-flash').empty();
+                        $('#rooms-flash').append("<p id='error-message' class='alert alert-danger'>Não foi possivel realizar as reservas. Falha critica. Entre em contato com o administrador. </p>");
                     }
                 }
                 var timeouthandle = setTimeout( progress2, 1000);
@@ -549,20 +552,8 @@ $( function() {
                         document.getElementById("btn-reservation").disabled = true;
                         document.getElementById("btn-distributes").disabled = true;
                         document.getElementById("btn-empty").disabled = true;
-
-                        if(document.getElementById('progressbar')){
-                            $( "#progressbar" ).progressbar( "value", json['progress'] );
-                        }else{
-                            $('#progressbar-div').append("<div id='progressbar'><div class='progress-label'></div></div>");
-                            var progressbar = $( "#progressbar" ),
-                            progressLabel = $( ".progress-label" );
-                            progressbar.progressbar({
-                                value: false,
-                                change: function() {
-                                    progressLabel.text( progressbar.progressbar( "value" ) + "%" );
-                                }
-                            });
-                        }
+                        document.getElementById("btn-distributes-spinner").style.display = 'inline-block';
+                        $( "#progressbar" ).remove();
                     }else if(isFailed){
                         if (trackingJob) {
                             document.getElementById("btn-reservation").disabled = false;
@@ -570,9 +561,10 @@ $( function() {
                             document.getElementById("btn-empty").disabled = false;
                             document.getElementById("btn-stop-distribution").style.display = 'none';
                             document.getElementById("btn-fallback-distribution").style.display = 'inline-block';
+                            document.getElementById("btn-distributes-spinner").style.display = 'none';
                             $( "#progressbar" ).remove();
-                            $('#flash-message').empty();
-                            $('#flash-message').append("<p id='error-message' class='alert alert-danger'>"+
+                            $('#rooms-flash').empty();
+                            $('#rooms-flash').append("<p id='error-message' class='alert alert-danger'>"+
                                 (json['message'] || 'Não foi possível realizar a distribuição. Falha crítica.') + "</p>");
 
                             setTimeout(function() { window.location.reload(); }, 2500);
@@ -587,8 +579,9 @@ $( function() {
                             document.getElementById("btn-empty").disabled = false;
                             document.getElementById("btn-stop-distribution").style.display = 'none';
                             document.getElementById("btn-fallback-distribution").style.display = 'none';
+                            document.getElementById("btn-distributes-spinner").style.display = 'none';
                             $( "#progressbar" ).remove();
-                            $('#flash-message').empty();
+                            $('#rooms-flash').empty();
 
                             var autoCount = json['assignments_count'] || 0;
                             var manualCount = json['manual_count'] || 0;
@@ -602,7 +595,7 @@ $( function() {
                                 successMsg += ', ' + unassignedCount + ' turma(s) não alocada(s)';
                             }
                             successMsg += '.';
-                            $('#flash-message').append("<p id='success-message' class='alert alert-success'>" + successMsg + "</p>");
+                            $('#rooms-flash').append("<p id='success-message' class='alert alert-success'>" + successMsg + "</p>");
 
                             setTimeout(function() { window.location.reload(); }, 2500);
                         }
@@ -613,6 +606,7 @@ $( function() {
                 }else{
                     document.getElementById("btn-stop-distribution").style.display = 'none';
                     document.getElementById("btn-fallback-distribution").style.display = 'none';
+                    document.getElementById("btn-distributes-spinner").style.display = 'none';
                     trackingJob = false;
                 }
 
