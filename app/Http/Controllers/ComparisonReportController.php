@@ -7,6 +7,7 @@ use App\Models\Room;
 use App\Models\SchoolClass;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 class ComparisonReportController extends Controller
 {
