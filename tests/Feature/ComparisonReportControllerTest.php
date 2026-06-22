@@ -47,8 +47,8 @@ class ComparisonReportControllerTest extends TestCase
             'solver_log_id' => null,
         ]);
 
-        $roomLegacy = Room::factory()->create(['nome' => 'A120', 'assentos' => 150]);
-        $roomSolver = Room::factory()->create(['nome' => 'A110', 'assentos' => 110]);
+        $roomLegacy = Room::factory()->create(['nome' => 'A' . rand(100, 999), 'assentos' => 150]);
+        $roomSolver = Room::factory()->create(['nome' => 'A' . rand(100, 999), 'assentos' => 110]);
 
         $class = SchoolClass::factory()
             ->withSchoolTerm($term)
@@ -123,7 +123,7 @@ class ComparisonReportControllerTest extends TestCase
         $response = $this->actingAsAdmin()->get("/comparison-reports/{$report->id}");
 
         $response->assertOk();
-        $response->assertViewHas(['report', 'scatterData', 'comfortZone']);
+        $response->assertViewHas(['report', 'scatterData', 'comfortZone', 'analytics']);
 
         // Delta cards: rótulos dos KPIs e valores formatados.
         $response->assertSee('Taxa de Alocação');
@@ -135,6 +135,15 @@ class ComparisonReportControllerTest extends TestCase
         $response->assertSee('radarChart', false);
         $response->assertSee('scatterChart', false);
         $response->assertSee('chart.js@4', false);
+
+        // Novos elementos da expansão.
+        $response->assertSee('Sumário Estatístico', false);
+        $response->assertSee('summaryBarChart', false);
+        $response->assertSee('occHistogramChart', false);
+        $response->assertSee('diffOccupancyChart', false);
+        $response->assertSee('diffWasteChart', false);
+        $response->assertSee('diffClaustrophobiaChart', false);
+        $response->assertSee('capacityDeltaChart', false);
 
         // Scatter: os pontos (demanda, capacidade) são serializados no JSON.
         // Demanda = 100 (estmtr); capacidade solver = 110; capacidade legado = 150.
@@ -176,6 +185,9 @@ class ComparisonReportControllerTest extends TestCase
         $response->assertSee('processando');
         $response->assertDontSee('radarChart', false);
         $response->assertDontSee('scatterChart', false);
+        $response->assertDontSee('summaryBarChart', false);
+        $response->assertDontSee('occHistogramChart', false);
+        $response->assertDontSee('diffOccupancyChart', false);
     }
 
     /** @test */
@@ -187,5 +199,19 @@ class ComparisonReportControllerTest extends TestCase
         $response = $this->actingAsOperator()->get("/comparison-reports/{$report->id}");
 
         $response->assertForbidden();
+    }
+
+    /** @test */
+    public function index_shows_cross_run_summary_when_multiple_completed_reports()
+    {
+        $term = SchoolTerm::factory()->create();
+        $this->createCompletedReport($term);
+        $this->createCompletedReport($term);
+
+        $response = $this->actingAsAdmin()->get('/comparison-reports');
+
+        $response->assertOk();
+        $response->assertViewHas('summaryByTerm');
+        $response->assertSee('Resumo por Semestre');
     }
 }

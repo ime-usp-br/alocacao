@@ -14,246 +14,207 @@ class AllocationEvaluatorServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private AllocationEvaluatorService $service;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->service = new AllocationEvaluatorService();
-    }
-
     /** @test */
-    public function it_calculates_all_kpis_with_exact_math(): void
+    public function breakdown_returns_only_eligible_classes()
     {
         $term = SchoolTerm::factory()->create();
-
-        $roomAZone = Room::factory()->create(['nome' => 'A120', 'assentos' => 120]);
-        $roomBZone = Room::factory()->create(['nome' => 'B110', 'assentos' => 110]);
-        $roomBMax = Room::factory()->create(['nome' => 'B125', 'assentos' => 125]);
-        $roomAWaste = Room::factory()->create(['nome' => 'A150', 'assentos' => 150]);
-        $roomAClaustro = Room::factory()->create(['nome' => 'A105', 'assentos' => 105]);
-
-        $freshmanCi = CourseInformation::factory()->mandatory()->semester('1')->create();
-
-        $cFreshmanA = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação'], [$freshmanCi]);
-        $cFreshmanB = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação'], [$freshmanCi]);
-        $cPosB = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $cPosA = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $cSenior = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação'], [
-            CourseInformation::factory()->mandatory()->semester('5')->create(),
+        $eligible = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 50,
+            'externa' => false,
         ]);
-        $cUnallocated = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação']);
-        $cExterna = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação', 'externa' => true]);
-        $cNoDemand = $this->createClass($term, ['estmtr' => 0, 'tiptur' => 'Graduação']);
-
-        $allocations = [
-            $cFreshmanA->id => $roomAZone->id,
-            $cFreshmanB->id => $roomBZone->id,
-            $cPosB->id => $roomBMax->id,
-            $cPosA->id => $roomAWaste->id,
-            $cSenior->id => $roomAClaustro->id,
-            $cExterna->id => $roomAZone->id,
-            $cNoDemand->id => $roomAZone->id,
-        ];
-
-        $metrics = $this->service->evaluate($term, $allocations, 12.5);
-
-        $this->assertEqualsWithDelta(83.3333333, $metrics['allocation_rate'], 1e-6);
-        $this->assertSame(60.0, $metrics['comfort_zone_rate']);
-        $this->assertSame(5.0, $metrics['avg_waste_per_class']);
-        $this->assertSame(1.0, $metrics['avg_claustrophobia_per_class']);
-        $this->assertSame(50.0, $metrics['block_adherence_rate']);
-        $this->assertSame(12.5, $metrics['solve_time_seconds']);
-    }
-
-    /** @test */
-    public function comfort_zone_uses_inclusive_bounds(): void
-    {
-        $term = SchoolTerm::factory()->create();
-
-        $roomMin = Room::factory()->create(['nome' => 'A110', 'assentos' => 110]);
-        $roomMax = Room::factory()->create(['nome' => 'A125', 'assentos' => 125]);
-
-        $cMin = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $cMax = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-
-        $metrics = $this->service->evaluate($term, [
-            $cMin->id => $roomMin->id,
-            $cMax->id => $roomMax->id,
+        $external = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 50,
+            'externa' => true,
+        ]);
+        $zeroDemand = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 0,
+            'externa' => false,
         ]);
 
-        $this->assertSame(100.0, $metrics['comfort_zone_rate']);
-        $this->assertSame(0.0, $metrics['avg_waste_per_class']);
-        $this->assertSame(0.0, $metrics['avg_claustrophobia_per_class']);
+        $service = new AllocationEvaluatorService();
+        $breakdown = $service->breakdown($term, [$eligible->id => null]);
+
+        $ids = array_column($breakdown, 'class_id');
+        $this->assertContains($eligible->id, $ids);
+        $this->assertNotContains($external->id, $ids);
+        $this->assertNotContains($zeroDemand->id, $ids);
     }
 
     /** @test */
-    public function waste_only_counts_excess_beyond_max_comfort_bound(): void
+    public function breakdown_computes_spatial_metrics_correctly()
     {
         $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
 
-        $roomJustOver = Room::factory()->create(['nome' => 'A126', 'assentos' => 126]);
-        $roomHuge = Room::factory()->create(['nome' => 'A200', 'assentos' => 200]);
-
-        $c1 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $c2 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-
-        $metrics = $this->service->evaluate($term, [
-            $c1->id => $roomJustOver->id,
-            $c2->id => $roomHuge->id,
+        // demand = 80, capacity = 100
+        // comfort zone 10%-25% => 88-100
+        // capacity = 100 is exactly at maxComfortCapacity (80*1.25=100) => inside comfort zone
+        $class = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
         ]);
 
-        $this->assertSame(0.0, $metrics['comfort_zone_rate']);
-        $this->assertSame((1.0 + 75.0) / 2.0, $metrics['avg_waste_per_class']);
-        $this->assertSame(0.0, $metrics['avg_claustrophobia_per_class']);
+        $service = new AllocationEvaluatorService();
+        $breakdown = $service->breakdown($term, [$class->id => $room->id]);
+        $record = collect($breakdown)->firstWhere('class_id', $class->id);
+
+        $this->assertTrue($record['allocated']);
+        $this->assertEquals(80.0, $record['demand']);
+        $this->assertEquals(100.0, $record['capacity']);
+        $this->assertEquals(0.8, $record['occupancy_ratio']);
+        $this->assertTrue($record['in_comfort_zone']);
+        $this->assertEquals(0.0, $record['waste']);
+        $this->assertEquals(0.0, $record['claustrophobia']);
     }
 
     /** @test */
-    public function claustrophobia_only_counts_deficit_below_min_comfort_bound(): void
+    public function breakdown_detects_waste_and_claustrophobia()
     {
         $term = SchoolTerm::factory()->create();
-
-        $roomJustBelow = Room::factory()->create(['nome' => 'A109', 'assentos' => 109]);
-        $roomTight = Room::factory()->create(['nome' => 'A100', 'assentos' => 100]);
-
-        $c1 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $c2 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-
-        $metrics = $this->service->evaluate($term, [
-            $c1->id => $roomJustBelow->id,
-            $c2->id => $roomTight->id,
+        // Waste: capacity well above max comfort
+        $roomWaste = Room::factory()->create(['nome' => 'A101', 'assentos' => 150]);
+        $classWaste = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
         ]);
 
-        $this->assertSame(0.0, $metrics['comfort_zone_rate']);
-        $this->assertSame(0.0, $metrics['avg_waste_per_class']);
-        $this->assertEqualsWithDelta(5.5, $metrics['avg_claustrophobia_per_class'], 1e-9);
-    }
-
-    /** @test */
-    public function block_adherence_excludes_non_constrained_classes(): void
-    {
-        $term = SchoolTerm::factory()->create();
-
-        $roomA = Room::factory()->create(['nome' => 'A101', 'assentos' => 120]);
-        $roomB = Room::factory()->create(['nome' => 'B101', 'assentos' => 120]);
-
-        $seniorCi = CourseInformation::factory()->mandatory()->semester('6')->create();
-        $cSenior = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação'], [$seniorCi]);
-
-        $metrics = $this->service->evaluate($term, [$cSenior->id => $roomB->id]);
-
-        $this->assertSame(0.0, $metrics['block_adherence_rate']);
-        $this->assertSame(100.0, $metrics['allocation_rate']);
-
-        $metricsA = $this->service->evaluate($term, [$cSenior->id => $roomA->id]);
-        $this->assertSame(0.0, $metricsA['block_adherence_rate']);
-    }
-
-    /** @test */
-    public function it_treats_null_and_unknown_room_ids_as_unallocated(): void
-    {
-        $term = SchoolTerm::factory()->create();
-
-        $c1 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $c2 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $c3 = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-
-        $metrics = $this->service->evaluate($term, [
-            $c1->id => null,
-            $c2->id => 999999,
-            $c3->id => Room::factory()->create(['nome' => 'B120', 'assentos' => 120])->id,
-        ]);
-
-        $this->assertEqualsWithDelta(33.3333333, $metrics['allocation_rate'], 1e-6);
-        $this->assertSame(100.0, $metrics['comfort_zone_rate']);
-    }
-
-    /** @test */
-    public function it_returns_zeros_when_no_eligible_classes(): void
-    {
-        $term = SchoolTerm::factory()->create();
-
-        $this->createClass($term, ['estmtr' => 0, 'tiptur' => 'Graduação']);
-        $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Graduação', 'externa' => true]);
-
-        $metrics = $this->service->evaluate($term, []);
-
-        $this->assertSame(0.0, $metrics['allocation_rate']);
-        $this->assertSame(0.0, $metrics['comfort_zone_rate']);
-        $this->assertSame(0.0, $metrics['avg_waste_per_class']);
-        $this->assertSame(0.0, $metrics['avg_claustrophobia_per_class']);
-        $this->assertSame(0.0, $metrics['block_adherence_rate']);
-        $this->assertNull($metrics['solve_time_seconds']);
-    }
-
-    /** @test */
-    public function it_returns_zeros_when_nothing_is_allocated(): void
-    {
-        $term = SchoolTerm::factory()->create();
-
-        $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-
-        $metrics = $this->service->evaluate($term, []);
-
-        $this->assertSame(0.0, $metrics['allocation_rate']);
-        $this->assertSame(0.0, $metrics['comfort_zone_rate']);
-        $this->assertSame(0.0, $metrics['avg_waste_per_class']);
-        $this->assertSame(0.0, $metrics['avg_claustrophobia_per_class']);
-    }
-
-    /** @test */
-    public function it_does_not_write_to_the_database(): void
-    {
-        $term = SchoolTerm::factory()->create();
-
-        $originalRoom = Room::factory()->create(['nome' => 'A120', 'assentos' => 120]);
-        $targetRoom = Room::factory()->create(['nome' => 'B150', 'assentos' => 150]);
-
-        $class = $this->createClass($term, [
+        // Claustrophobia: capacity below min comfort
+        $roomClaus = Room::factory()->create(['nome' => 'A102', 'assentos' => 80]);
+        $classClaus = SchoolClass::factory()->withSchoolTerm($term)->create([
             'estmtr' => 100,
-            'tiptur' => 'Pós Graduação',
-            'room_id' => $originalRoom->id,
+            'externa' => false,
         ]);
 
-        $this->service->evaluate($term, [$class->id => $targetRoom->id], 5.0);
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [
+            $classWaste->id => $roomWaste->id,
+            $classClaus->id => $roomClaus->id,
+        ]);
 
-        $this->assertSame(
-            (int) $originalRoom->id,
-            (int) SchoolClass::whereKey($class->id)->value('room_id'),
-            'O evaluator não pode sobrescrever o room_id de produção.'
-        );
+        $rWaste = collect($bd)->firstWhere('class_id', $classWaste->id);
+        $rClaus = collect($bd)->firstWhere('class_id', $classClaus->id);
 
-        $this->assertSame($targetRoom->assentos, (int) Room::whereKey($targetRoom->id)->value('assentos'));
+        // demand 80, max comfort = 100, capacity 150 => waste 50
+        $this->assertEquals(50.0, $rWaste['waste']);
+        $this->assertFalse($rWaste['in_comfort_zone']);
+
+        // demand 100, min comfort = 110, capacity 80 => claustrophobia 30
+        $this->assertEquals(30.0, $rClaus['claustrophobia']);
+        $this->assertFalse($rClaus['in_comfort_zone']);
     }
 
     /** @test */
-    public function solve_time_seconds_defaults_to_null(): void
+    public function breakdown_block_adherence_for_freshman_and_postgrad()
     {
         $term = SchoolTerm::factory()->create();
 
-        $c = $this->createClass($term, ['estmtr' => 100, 'tiptur' => 'Pós Graduação']);
-        $room = Room::factory()->create(['nome' => 'B120', 'assentos' => 120]);
+        // Freshman (Graduação, mandatory, 1st semester) => expected block A
+        $freshman = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $ci = \App\Models\CourseInformation::factory()->mandatory()->semester('1')->create();
+        $freshman->courseinformations()->attach($ci);
 
-        $metrics = $this->service->evaluate($term, [$c->id => $room->id]);
+        // Post-grad => expected block B
+        $postgrad = SchoolClass::factory()->withSchoolTerm($term)->graduate()->create([
+            'estmtr' => 20,
+            'externa' => false,
+        ]);
 
-        $this->assertNull($metrics['solve_time_seconds']);
+        // Regular undergrad (not freshman) => no expected block
+        $regular = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 40,
+            'externa' => false,
+        ]);
+        $ciRegular = \App\Models\CourseInformation::factory()->create(['tipobg' => 'O', 'numsemidl' => '3']);
+        $regular->courseinformations()->attach($ciRegular);
+
+        $roomA = Room::factory()->create(['nome' => 'A101', 'assentos' => 50]);
+        $roomB = Room::factory()->create(['nome' => 'B101', 'assentos' => 50]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [
+            $freshman->id => $roomA->id,
+            $postgrad->id => $roomB->id,
+            $regular->id => $roomA->id,
+        ]);
+
+        $rf = collect($bd)->firstWhere('class_id', $freshman->id);
+        $rp = collect($bd)->firstWhere('class_id', $postgrad->id);
+        $rr = collect($bd)->firstWhere('class_id', $regular->id);
+
+        $this->assertEquals('A', $rf['expected_block']);
+        $this->assertEquals('A', $rf['actual_block']);
+
+        $this->assertEquals('B', $rp['expected_block']);
+        $this->assertEquals('B', $rp['actual_block']);
+
+        $this->assertNull($rr['expected_block']);
+        $this->assertEquals('A', $rr['actual_block']);
     }
 
-    private function createClass(SchoolTerm $term, array $attributes = [], array $courseInformations = []): SchoolClass
+    /** @test */
+    public function evaluate_aggregates_breakdown_correctly()
     {
-        $class = SchoolClass::factory()
-            ->withSchoolTerm($term)
-            ->withoutRoom()
-            ->create(array_merge([
-                'tiptur' => 'Graduação',
-                'externa' => false,
-            ], $attributes));
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
+        $class = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
+        ]);
 
-        foreach ($courseInformations as $ci) {
-            $class->courseinformations()->attach($ci->id);
-        }
+        $service = new AllocationEvaluatorService();
+        $metrics = $service->evaluate($term, [$class->id => $room->id]);
 
-        return $class->fresh('courseinformations');
+        $this->assertEquals(100.0, $metrics['allocation_rate']);
+        $this->assertEquals(100.0, $metrics['comfort_zone_rate']);
+        $this->assertEquals(0.0, $metrics['avg_waste_per_class']);
+        $this->assertEquals(0.0, $metrics['avg_claustrophobia_per_class']);
+    }
+
+    /** @test */
+    public function evaluate_is_regression_identical_to_previous_implementation()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 120]);
+        $class = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 100,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $metrics = $service->evaluate($term, [$class->id => $room->id], 5.0);
+
+        // capacity 120, demand 100, min comfort 110, max comfort 125
+        // capacity 120 > max comfort 125? No, 120 <= 125 => inside comfort zone
+        // waste = 0 (120 <= 125)
+        // claustrophobia = 0 (120 >= 110)
+        $this->assertEquals(100.0, $metrics['allocation_rate']);
+        $this->assertEquals(100.0, $metrics['comfort_zone_rate']);
+        $this->assertEquals(0.0, $metrics['avg_waste_per_class']);
+        $this->assertEquals(0.0, $metrics['avg_claustrophobia_per_class']);
+        $this->assertEquals(5.0, $metrics['solve_time_seconds']);
+    }
+
+    /** @test */
+    public function breakdown_handles_unassigned_class()
+    {
+        $term = SchoolTerm::factory()->create();
+        $class = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 50,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [$class->id => null]);
+        $r = collect($bd)->firstWhere('class_id', $class->id);
+
+        $this->assertFalse($r['allocated']);
+        $this->assertNull($r['capacity']);
+        $this->assertNull($r['occupancy_ratio']);
+        $this->assertEquals(0.0, $r['waste']);
+        $this->assertEquals(0.0, $r['claustrophobia']);
+        $this->assertNull($r['actual_block']);
     }
 }

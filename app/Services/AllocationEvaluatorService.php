@@ -41,34 +41,41 @@ class AllocationEvaluatorService
      */
     public function evaluate(SchoolTerm $schoolTerm, array $allocations, ?float $solveTimeSeconds = null): array
     {
-        $classes = $this->loadClasses($schoolTerm);
-        $rooms = $this->loadRooms($allocations);
+        $breakdown = $this->breakdown($schoolTerm, $allocations);
 
-        $eligible = $classes->filter(fn (SchoolClass $class) => $this->isEligible($class));
+        $eligibleCount = count($breakdown);
 
-        $allocated = $eligible->filter(function (SchoolClass $class) use ($allocations, $rooms) {
-            $roomId = $allocations[$class->id] ?? null;
+        $allocated = array_filter($breakdown, fn ($r) => $r['allocated']);
+        $allocatedCount = count($allocated);
 
-            return $roomId !== null && $rooms->has((int) $roomId);
-        })->values();
+        $allocationRate = $this->safeRate($allocatedCount, $eligibleCount);
 
-        $allocationRate = $this->safeRate($allocated->count(), $eligible->count());
+        $comfortZoneCount = 0;
+        $wasteSum = 0.0;
+        $claustrophobiaSum = 0.0;
+        foreach ($allocated as $r) {
+            if ($r['in_comfort_zone']) {
+                $comfortZoneCount++;
+            }
+            $wasteSum += $r['waste'];
+            $claustrophobiaSum += $r['claustrophobia'];
+        }
 
-        [$comfortZoneCount, $wasteSum, $claustrophobiaSum] = $this->computeSpatialMetrics(
-            $allocated,
-            $allocations,
-            $rooms
-        );
+        $comfortZoneRate = $this->safeRate($comfortZoneCount, $allocatedCount);
+        $avgWaste = $this->safeAverage($wasteSum, $allocatedCount);
+        $avgClaustrophobia = $this->safeAverage($claustrophobiaSum, $allocatedCount);
 
-        $comfortZoneRate = $this->safeRate($comfortZoneCount, $allocated->count());
-        $avgWaste = $this->safeAverage($wasteSum, $allocated->count());
-        $avgClaustrophobia = $this->safeAverage($claustrophobiaSum, $allocated->count());
-
-        [$blockAdherent, $blockSubject] = $this->computeBlockAdherence(
-            $allocated,
-            $allocations,
-            $rooms
-        );
+        $blockAdherent = 0;
+        $blockSubject = 0;
+        foreach ($allocated as $r) {
+            if ($r['expected_block'] === null) {
+                continue;
+            }
+            $blockSubject++;
+            if ($r['actual_block'] === $r['expected_block']) {
+                $blockAdherent++;
+            }
+        }
 
         $blockAdherenceRate = $this->safeRate($blockAdherent, $blockSubject);
 
@@ -80,6 +87,91 @@ class AllocationEvaluatorService
             'block_adherence_rate' => $blockAdherenceRate,
             'solve_time_seconds' => $solveTimeSeconds,
         ];
+    }
+
+    /**
+     * Retorna o breakdown por turma elegível (stateless, sem escrita no DB).
+     *
+     * Cada registro contém as métricas espaciais e de bloco para a turma,
+     * permitindo análises pareadas e distribucionais no controller.
+     *
+     * @return array<int, array{
+     *     class_id: int,
+     *     allocated: bool,
+     *     demand: float|null,
+     *     capacity: float|null,
+     *     occupancy_ratio: float|null,
+     *     waste: float,
+     *     claustrophobia: float,
+     *     in_comfort_zone: bool,
+     *     expected_block: string|null,
+     *     actual_block: string|null,
+     *     room_id: int|null,
+     * }>
+     */
+    public function breakdown(SchoolTerm $schoolTerm, array $allocations): array
+    {
+        $classes = $this->loadClasses($schoolTerm);
+        $rooms = $this->loadRooms($allocations);
+
+        $eligible = $classes->filter(fn (SchoolClass $class) => $this->isEligible($class));
+
+        $epsilon = 1e-9;
+        $result = [];
+
+        foreach ($eligible as $class) {
+            $roomId = $allocations[$class->id] ?? null;
+            $allocated = $roomId !== null && $rooms->has((int) $roomId);
+
+            $demand = (float) $class->estmtr;
+            $capacity = null;
+            $occupancyRatio = null;
+            $waste = 0.0;
+            $claustrophobia = 0.0;
+            $inComfortZone = false;
+            $actualBlock = null;
+
+            if ($allocated) {
+                $room = $rooms->get((int) $roomId);
+                $capacity = (float) $room->assentos;
+                $occupancyRatio = $capacity > 0 ? ($demand / $capacity) : null;
+
+                $minMargin = $demand * ($this->comfortZoneMinPercent / 100.0);
+                $maxMargin = $demand * ($this->comfortZoneMaxPercent / 100.0);
+                $minComfortCapacity = $demand + $minMargin;
+                $maxComfortCapacity = $demand + $maxMargin;
+
+                if ($capacity >= $minComfortCapacity - $epsilon && $capacity <= $maxComfortCapacity + $epsilon) {
+                    $inComfortZone = true;
+                }
+
+                if ($capacity > $maxComfortCapacity + $epsilon) {
+                    $waste = $capacity - $maxComfortCapacity;
+                }
+
+                if ($capacity < $minComfortCapacity - $epsilon) {
+                    $claustrophobia = $minComfortCapacity - $capacity;
+                }
+
+                $actualBlock = $this->roomBlock($room);
+            }
+
+            $result[] = [
+                'class_id' => $class->id,
+                'allocated' => $allocated,
+                'demand' => $demand,
+                'capacity' => $capacity,
+                'occupancy_ratio' => $occupancyRatio,
+                'waste' => $waste,
+                'claustrophobia' => $claustrophobia,
+                'in_comfort_zone' => $inComfortZone,
+                'expected_block' => $this->expectedBlock($class),
+                'actual_block' => $actualBlock,
+                'room_id' => $allocated ? (int) $roomId : null,
+            ];
+        }
+
+        return $result;
     }
 
     /**
@@ -121,85 +213,6 @@ class AllocationEvaluatorService
     private function isEligible(SchoolClass $class): bool
     {
         return ! $class->externa && $class->estmtr !== null && $class->estmtr > 0;
-    }
-
-    /**
-     * Calcula as métricas espaciais (zona de conforto, desperdício e claustrofobia).
-     *
-     * @return array{0: int, 1: float, 2: float} [comfortZoneCount, wasteSum, claustrophobiaSum]
-     */
-    private function computeSpatialMetrics(Collection $allocated, array $allocations, Collection $rooms): array
-    {
-        $comfortZoneCount = 0;
-        $wasteSum = 0.0;
-        $claustrophobiaSum = 0.0;
-
-        // Margens aditivas (demanda + percentual) evitam artefatos de ponto
-        // flutuante que surgiriam ao usar fatores multiplicativos (ex.: 1.1).
-        $epsilon = 1e-9;
-
-        foreach ($allocated as $class) {
-            $roomId = (int) $allocations[$class->id];
-            $room = $rooms->get($roomId);
-
-            $demand = (float) $class->estmtr;
-            $capacity = (float) $room->assentos;
-
-            $minMargin = $demand * ($this->comfortZoneMinPercent / 100.0);
-            $maxMargin = $demand * ($this->comfortZoneMaxPercent / 100.0);
-            $minComfortCapacity = $demand + $minMargin;
-            $maxComfortCapacity = $demand + $maxMargin;
-
-            if ($capacity >= $minComfortCapacity - $epsilon && $capacity <= $maxComfortCapacity + $epsilon) {
-                $comfortZoneCount++;
-            }
-
-            if ($capacity > $maxComfortCapacity + $epsilon) {
-                $wasteSum += $capacity - $maxComfortCapacity;
-            }
-
-            if ($capacity < $minComfortCapacity - $epsilon) {
-                $claustrophobiaSum += $minComfortCapacity - $capacity;
-            }
-        }
-
-        return [$comfortZoneCount, $wasteSum, $claustrophobiaSum];
-    }
-
-    /**
-     * Calcula a aderência às restrições de bloco.
-     *
-     * Regra (régua isomórfica documentada na arquitetura):
-     *  - Calouros (Graduação obrigatória do 1º/2º semestre ideal) → Bloco A.
-     *  - Pós-Graduação → Bloco B.
-     *
-     * Turmas não sujeitas a nenhuma restrição de bloco não compõem o denominador.
-     *
-     * @return array{0: int, 1: int} [adherentCount, subjectCount]
-     */
-    private function computeBlockAdherence(Collection $allocated, array $allocations, Collection $rooms): array
-    {
-        $adherent = 0;
-        $subject = 0;
-
-        foreach ($allocated as $class) {
-            $expectedBlock = $this->expectedBlock($class);
-
-            if ($expectedBlock === null) {
-                continue;
-            }
-
-            $subject++;
-
-            $room = $rooms->get((int) $allocations[$class->id]);
-            $actualBlock = $this->roomBlock($room);
-
-            if ($actualBlock === $expectedBlock) {
-                $adherent++;
-            }
-        }
-
-        return [$adherent, $subject];
     }
 
     /**
