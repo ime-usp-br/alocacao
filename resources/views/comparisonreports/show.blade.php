@@ -38,6 +38,16 @@
 
         return number_format((float) $value, $decimals, ',', '.');
     };
+
+    // Textos explicativos exibidos em tooltips nativas do Bootstrap 4.
+    $kpiTooltips = [
+        'allocation_rate'              => 'Percentual de turmas que o algoritmo conseguiu alocar em alguma sala.',
+        'comfort_zone_rate'            => 'Percentual de turmas alocadas em salas que possuem a margem ideal de assentos livres (entre 10% e 25% a mais que a demanda).',
+        'avg_waste_per_class'          => 'Média de assentos vazios que excedem o limite máximo de 25% de folga nas turmas alocadas. Quanto menor, melhor.',
+        'avg_claustrophobia_per_class' => 'Média de assentos faltantes para atingir a margem de segurança de 10% de folga nas turmas alocadas. Quanto menor, melhor.',
+        'block_adherence_rate'         => 'Percentual de turmas que respeitaram a restrição geográfica (ex: Calouros no Bloco A, Pós-graduação no Bloco B).',
+        'solve_time_seconds'           => 'Tempo total em segundos gasto pelo algoritmo para encontrar a solução. Quanto menor, melhor.',
+    ];
 @endphp
 
 @section('content')
@@ -116,36 +126,53 @@
                 {{-- Cards de Variação (Deltas)  --}}
                 {{-- ============================ --}}
                 <h3 class="mb-3">Variação Relativa (Legado vs. Solver)</h3>
+                <p class="text-muted small mb-3">A variação (%) representa a diferença do Solver em relação ao Legado. Verde = melhoria; vermelho = piora.</p>
                 <div class="row mb-5">
                     @foreach ($kpiLabels as $key => $label)
                         @php
                             $legacyVal = $legacy[$key] ?? null;
                             $solverVal = $solver[$key] ?? null;
                             $higherIsBetter = in_array($key, $higherBetter, true);
-                            $delta = null;
                             $deltaClass = 'secondary';
                             $deltaLabel = '-';
 
                             if ($legacyVal !== null && $solverVal !== null) {
-                                $delta = (float) $solverVal - (float) $legacyVal;
-                                $improved = $higherIsBetter ? ($delta > 0) : ($delta < 0);
-                                $worsened = $higherIsBetter ? ($delta < 0) : ($delta > 0);
-                                if (abs($delta) < 1e-9) {
+                                $legacyF = (float) $legacyVal;
+                                $solverF = (float) $solverVal;
+                                $deltaPct = null;
+                                if (abs($legacyF) < 1e-9) {
+                                    // Legado igual a 0: se solver também for 0 => igual;
+                                    // se solver > 0 => "infinito" (representado como +∞/-∞ conforme métrica).
+                                    if (abs($solverF) < 1e-9) {
+                                        $deltaPct = 0.0;
+                                    } else {
+                                        $deltaPct = $higherIsBetter ? INF : -INF;
+                                    }
+                                } else {
+                                    $deltaPct = (($solverF - $legacyF) / abs($legacyF)) * 100;
+                                }
+
+                                $improved = $higherIsBetter ? ($deltaPct > 0) : ($deltaPct < 0);
+                                $worsened = $higherIsBetter ? ($deltaPct < 0) : ($deltaPct > 0);
+                                if (abs($deltaPct) < 1e-9) {
                                     $deltaClass = 'secondary';
                                     $deltaLabel = 'igual';
+                                } elseif (is_infinite($deltaPct)) {
+                                    $deltaClass = $improved ? 'success' : 'danger';
+                                    $deltaLabel = ($deltaPct > 0 ? '+' : '-') . '∞%';
                                 } elseif ($improved) {
                                     $deltaClass = 'success';
-                                    $deltaLabel = ($delta > 0 ? '+' : '') . $formatMetric($key, $delta) . $kpiUnits[$key];
+                                    $deltaLabel = ($deltaPct > 0 ? '+' : '') . number_format($deltaPct, 1, ',', '.') . '%';
                                 } elseif ($worsened) {
                                     $deltaClass = 'danger';
-                                    $deltaLabel = ($delta > 0 ? '+' : '') . $formatMetric($key, $delta) . $kpiUnits[$key];
+                                    $deltaLabel = ($deltaPct > 0 ? '+' : '') . number_format($deltaPct, 1, ',', '.') . '%';
                                 }
                             }
                         @endphp
                         <div class="col-12 col-md-6 col-lg-4 mb-3">
                             <div class="card h-100 border-{{ $deltaClass }}">
                                 <div class="card-body">
-                                    <div class="text-muted small text-uppercase fw-semibold mb-2">{{ $label }}</div>
+                                    <div class="text-muted small text-uppercase fw-semibold mb-2" data-toggle="tooltip" data-placement="top" title="{{ $kpiTooltips[$key] ?? '' }}">{{ $label }}</div>
                                     <div class="d-flex justify-content-between align-items-end">
                                         <div>
                                             <div class="small text-muted">Legado</div>
@@ -169,7 +196,7 @@
                     {{-- ============================ --}}
                     {{-- Gráfico Radar (Teia)       --}}
                     {{-- ============================ --}}
-                    <h3 class="mb-3">Cobertura de Qualidade (Radar Normalizado 0-100)</h3>
+                    <h3 class="mb-3" data-toggle="tooltip" data-placement="top" title="Pontuação normalizada de 0 a 100: o algoritmo com melhor desempenho em cada eixo recebe 100.">Cobertura de Qualidade (Radar Normalizado 0-100)</h3>
                     <div class="card mb-5">
                         <div class="card-body">
                             <div style="position: relative; height: 450px;">
@@ -181,7 +208,7 @@
                     {{-- ============================ --}}
                     {{-- Scatter Plot Demanda x Cap --}}
                     {{-- ============================ --}}
-                    <h3 class="mb-3">Dispersão Demanda x Capacidade</h3>
+                    <h3 class="mb-3" data-toggle="tooltip" data-placement="top" title="Cada ponto representa uma turma alocada, posicionada pela demanda (alunos) x capacidade (cadeiras) da sala escolhida. A área sombreada é a Zona de Conforto.">Dispersão Demanda x Capacidade</h3>
                     <div class="card mb-4">
                         <div class="card-body">
                             <p class="text-muted small mb-2">
@@ -215,11 +242,18 @@
     const comfortZone   = @json($comfortZone);
 
     // ---------------------------------------------------------------
-    // Normalizacao 0-100 para o Radar Chart.
-    //  - Métricas "maior melhor": valor direto (já percentual), cap 100.
-    //  - Métricas "menor melhor" (desperdício, claustrofobia, tempo):
-    //    score = 100 * (1 - valor / maxValor), onde maxValor é o maior
-    //    entre os dois algoritmos. Se ambos forem 0, score = 100.
+    // Normalizacao 0-100 para o Radar Chart (Relative Max/Min Scaling).
+    // Comparativo justo de trade-off: em CADA eixo o vencedor encosta na
+    // borda externa (100) e o perdedor é plotado proporcionalmente.
+    //
+    //  - Métricas "maior melhor": score = (valor / maxVal) * 100, onde
+    //    maxVal = Math.max(legado, solver). O vencedor (maior) recebe 100.
+    //    Se ambos forem 0 => score 0 (empate em zero => sem destaque).
+    //
+    //  - Métricas "menor melhor": score = (minVal / valor) * 100, onde
+    //    minVal = Math.min(legado, solver). O vencedor (menor) recebe 100.
+    //    Se o valor for 0 => ausência de desperdício/claustrofobia/tempo
+    //    é perfeição => score 100.
     // ---------------------------------------------------------------
     const higherBetter = ['allocation_rate', 'comfort_zone_rate', 'block_adherence_rate'];
     const lowerBetter  = ['avg_waste_per_class', 'avg_claustrophobia_per_class', 'solve_time_seconds'];
@@ -235,49 +269,81 @@
         'Taxa de Alocação',
         'Zona de Conforto',
         'Aderência de Bloco',
-        'Desperdício (inv)',
-        'Claustrofobia (inv)',
-        'Tempo (inv)',
+        'Eficiência de Ocupação',
+        'Adequação de Espaço',
+        'Velocidade de Resolução',
     ];
+
+    // Unidades/formatadores para exibir o valor bruto na tooltip do radar.
+    const rawUnits = {
+        'allocation_rate':              { suffix: '%', decimals: 1 },
+        'comfort_zone_rate':            { suffix: '%', decimals: 1 },
+        'block_adherence_rate':         { suffix: '%', decimals: 1 },
+        'avg_waste_per_class':          { suffix: ' assentos', decimals: 2 },
+        'avg_claustrophobia_per_class': { suffix: ' assentos', decimals: 2 },
+        'solve_time_seconds':           { suffix: ' s', decimals: 2 },
+    };
 
     function val(metrics, key) {
         const v = metrics[key];
         return (v === null || v === undefined) ? null : Number(v);
     }
 
-    function normalizeSet(metrics) {
-        const out = [];
-        axes.forEach(function (key, i) {
-            const v = val(metrics, key);
-            if (higherBetter.indexOf(key) !== -1) {
-                out[i] = (v === null) ? 0 : Math.min(Math.max(v, 0), 100);
-            } else {
-                // valor bruto para normalização inversa posterior
-                out[i] = v;
-            }
-        });
-        return out;
+    function formatRaw(key, v) {
+        if (v === null) return 'n/a';
+        const cfg = rawUnits[key] || { suffix: '', decimals: 2 };
+        return v.toFixed(cfg.decimals).replace('.', ',') + cfg.suffix;
     }
 
-    const legacyNorm  = normalizeSet(legacyMetrics);
-    const solverNorm  = normalizeSet(solverMetrics);
+    // Guarda os valores brutos para uso nas tooltips (mantém a ordem de axes).
+    const legacyRaw = [];
+    const solverRaw = [];
+    axes.forEach(function (key, i) {
+        legacyRaw[i] = val(legacyMetrics, key);
+        solverRaw[i] = val(solverMetrics, key);
+    });
 
-    // Normaliza as métricas "menor melhor" em relação ao máximo entre os dois.
-    lowerBetter.forEach(function (key) {
-        const idx = axes.indexOf(key);
-        const lv = legacyNorm[idx];
-        const sv = solverNorm[idx];
-        const maxVal = Math.max(
-            (lv === null ? 0 : lv),
-            (sv === null ? 0 : sv)
-        );
-        function inv(v) {
-            if (v === null) return 0;
-            if (maxVal <= 1e-9) return 100;
-            return Math.max(0, Math.min(100, 100 * (1 - v / maxVal)));
+    // Único loop de processamento: preenche legacyNorm e solverNorm com
+    // normalização relativa (max para higherBetter, min para lowerBetter).
+    const legacyNorm = [];
+    const solverNorm = [];
+    axes.forEach(function (key, i) {
+        const lv = legacyRaw[i];
+        const sv = solverRaw[i];
+        const isHigher = higherBetter.indexOf(key) !== -1;
+
+        if (isHigher) {
+            // "Quanto maior, melhor": proporção direta em relação ao máximo.
+            const maxVal = Math.max(
+                (lv === null ? -Infinity : lv),
+                (sv === null ? -Infinity : sv)
+            );
+            function scaleHigh(v) {
+                if (v === null) return 0;
+                // Ambos 0 => empate em zero => sem destaque (score 0).
+                if (maxVal <= 1e-9) return 0;
+                return Math.max(0, Math.min(100, (v / maxVal) * 100));
+            }
+            legacyNorm[i] = scaleHigh(lv);
+            solverNorm[i] = scaleHigh(sv);
+        } else {
+            // "Quanto menor, melhor": proporção inversa em relação ao mínimo.
+            const minVal = Math.min(
+                (lv === null ? Infinity : lv),
+                (sv === null ? Infinity : sv)
+            );
+            function scaleLow(v) {
+                if (v === null) return 0;
+                // Valor 0 => perfeição (ausência de desperdício/claustrofobia/tempo).
+                if (v <= 1e-9) return 100;
+                // Se o mínimo for 0: o vencedor (0) já recebeu 100 acima;
+                // o perdedor (>0) recebe 0, pois não há divisor válido.
+                if (minVal <= 1e-9) return 0;
+                return Math.max(0, Math.min(100, (minVal / v) * 100));
+            }
+            legacyNorm[i] = scaleLow(lv);
+            solverNorm[i] = scaleLow(sv);
         }
-        legacyNorm[idx] = inv(lv);
-        solverNorm[idx] = inv(sv);
     });
 
     if (typeof Chart !== 'undefined') {
@@ -318,6 +384,18 @@
                 },
                 plugins: {
                     legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                const i = ctx.dataIndex;
+                                const key = axes[i];
+                                const raw = (ctx.datasetIndex === 0) ? legacyRaw[i] : solverRaw[i];
+                                const score = ctx.parsed.r;
+                                return ctx.dataset.label + ': ' + formatRaw(key, raw) +
+                                    ' (Score normalizado de 0-100: ' + Number(score.toFixed(1)).toLocaleString('pt-BR') + ')';
+                            },
+                        },
+                    },
                 },
             },
         });
@@ -419,4 +497,12 @@
 })();
 </script>
 @endif
+<script>
+    // Inicializa tooltips nativas do Bootstrap 4 nesta página.
+    if (typeof jQuery !== 'undefined') {
+        jQuery(function ($) {
+            $('[data-toggle="tooltip"]').tooltip();
+        });
+    }
+</script>
 @endsection
