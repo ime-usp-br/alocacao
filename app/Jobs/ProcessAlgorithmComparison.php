@@ -186,10 +186,14 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         $timeout = config('alocacao.solver.timeout', 60);
 
         $webhookUrl = route('webhooks.comparison.result');
+        $progressWebhookUrl = route('webhooks.allocation.progress');
 
-        // Injeta no bloco meta do payload a URL de webhook especifica do
-        // escopo de Benchmarking (em vez da rota padrao de salvamento).
+        // Injeta no bloco meta do payload as URLs de webhook especificas
+        // do escopo de Benchmarking (em vez da rota padrao de salvamento).
+        // O progress_webhook_url e obrigatorio pela API do solver mesmo
+        // no fluxo de comparacao.
         $payload['meta']['webhook_url'] = $webhookUrl;
+        $payload['meta']['progress_webhook_url'] = $progressWebhookUrl;
 
         Log::info('ProcessAlgorithmComparison: dispatching to solver', [
             'comparison_report_id' => $report->id,
