@@ -13,17 +13,6 @@
             </div>
             <br>
 
-            @if (!empty($formattedSuggestions))
-                <div class="alert alert-info">
-                    <strong>Sugestões de quebra de turmas:</strong>
-                    <ul class="mb-0">
-                        @foreach ($formattedSuggestions as $suggestion)
-                            <li>{{ $suggestion }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-
             @if (count($salas) > 0)
                 <div class="d-flex justify-content-center">
                     <div class="col-md-6">
