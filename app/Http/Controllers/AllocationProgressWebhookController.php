@@ -38,6 +38,19 @@ class AllocationProgressWebhookController extends Controller
             return response()->json(['message' => 'Job not found'], 404);
         }
 
+        // Comparison jobs: acknowledge progress without touching the
+        // production allocation cache (restored to its pre-benchmark state).
+        $comparisonReportId = Cache::get("comparison:job:{$jobId}");
+        if ($comparisonReportId !== null) {
+            Log::info('AllocationProgressWebhook: progress for comparison job', [
+                'job_id' => $jobId,
+                'comparison_report_id' => (int) $comparisonReportId,
+                'progress' => $progress,
+            ]);
+
+            return response()->json(['message' => 'Progress acknowledged (comparison)'], 200);
+        }
+
         $cacheKey = "allocation:{$schoolTermId}";
         $existing = Cache::get($cacheKey);
 
@@ -112,6 +125,15 @@ class AllocationProgressWebhookController extends Controller
 
         if ($schoolTermId !== null) {
             return (int) $schoolTermId;
+        }
+
+        // Comparison jobs are indexed under a separate key
+        $comparisonReportId = Cache::get("comparison:job:{$jobId}");
+        if ($comparisonReportId !== null) {
+            $report = \App\Models\ComparisonReport::find((int) $comparisonReportId);
+            if ($report) {
+                return $report->school_term_id;
+            }
         }
 
         // Fallback: brute-force search over likely school term IDs

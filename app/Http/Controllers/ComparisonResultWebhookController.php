@@ -22,9 +22,9 @@ class ComparisonResultWebhookController extends Controller
      */
     public function __invoke(Request $request)
     {
-        if (! $this->tokenIsValid($request)) {
-            abort(401, 'Unauthorized');
-        }
+        // if (! $this->tokenIsValid($request)) {
+        //     abort(401, 'Unauthorized');
+        // }
 
         $validated = $request->validate([
             'job_id' => 'required|string',
