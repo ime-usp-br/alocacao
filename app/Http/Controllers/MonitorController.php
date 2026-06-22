@@ -67,6 +67,21 @@ class MonitorController extends Controller
             return response()->json(null);
         }
 
+        // Se ha uma comparacao de algoritmos em execucao, o cache foi
+        // escrito pela heuristica legada dentro do benchmarking (nao por
+        // uma distribuicao real). Retorna um status especifico para que o
+        // frontend nao exiba "Distribuicao concluida".
+        $comparisonReportId = Cache::get("comparison:running:{$st->id}");
+        if ($comparisonReportId !== null) {
+            return response()->json([
+                'progress' => $cached['progress'] ?? 0,
+                'status' => 'comparison',
+                'message' => 'Comparação de algoritmos em execução (benchmark). A distribuição de produção não será alterada.',
+                'failed' => false,
+                'comparison_report_id' => (int) $comparisonReportId,
+            ]);
+        }
+
         $terminalStatuses = ['completed', 'error', 'timeout'];
         $isFailed = in_array($cached['status'], $terminalStatuses) && $cached['status'] !== 'completed';
 

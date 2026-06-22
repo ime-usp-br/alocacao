@@ -21,10 +21,12 @@ use Illuminate\Support\Facades\Log;
 use Session;
 use App\Jobs\ProcessRoomDistribution;
 use App\Jobs\ProcessLegacyRoomDistribution;
+use App\Jobs\ProcessAlgorithmComparison;
 use App\Models\Requisition;
 use App\Models\Reservation;
 use App\Models\Room;
 use App\Models\SchoolTerm;
+use App\Models\AllocationState;
 use App\Models\Priority;
 use App\Models\SchoolClass;
 use App\Models\CourseInformation;
@@ -259,6 +261,31 @@ class RoomController extends Controller
         $existing = Cache::get("allocation:{$schoolterm->id}");
         if ($existing && !in_array($existing['status'] ?? '', ['completed', 'error', 'timeout'])) {
             Session::put("alert-warning", "Já existe uma distribuição em andamento para este semestre.");
+            return back();
+        }
+
+        if ((bool) ($validated['compare_algorithms'] ?? false)) {
+            $baseStateId = $validated['base_allocation_state_id'] ?? null;
+
+            if (! $baseStateId) {
+                Session::put("alert-danger", "Selecione um estado base para a comparação.");
+                return back();
+            }
+
+            $baseState = AllocationState::whereBelongsTo($schoolterm)->find($baseStateId);
+            if (! $baseState) {
+                Session::put("alert-danger", "O estado base selecionado não pertence ao semestre atual.");
+                return back();
+            }
+
+            ProcessAlgorithmComparison::dispatch(
+                $schoolterm->id,
+                $baseState->id,
+                $validated['rooms_id'],
+                $validated['solver_config'] ?? []
+            );
+
+            Session::put("alert-info", "Comparação de algoritmos iniciada. A distribuição de produção não será alterada. Acompanhe o resultado em /comparison-reports.");
             return back();
         }
 

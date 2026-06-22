@@ -433,11 +433,40 @@ $tooltips = [
                         </label>
                     </div>
                 </div>
+                <div class="p-3 border-left border-right border-bottom rounded-bottom mt-2">
+                    <div class="custom-control custom-switch">
+                        <input type="hidden" name="compare_algorithms" value="0" form="distributesForm">
+                        <input type="checkbox" class="custom-control-input" id="compare_algorithms"
+                            name="compare_algorithms" value="1"
+                            form="distributesForm">
+                        <label class="custom-control-label font-weight-bold" for="compare_algorithms"
+                            data-toggle="tooltip" data-placement="top"
+                            title="Executa a heuristica legada e o solver CP-SAT a partir do mesmo estado base, sem alterar a distribuicao de producao, e gera um relatorio de benchmarking comparativo. Os parametros do solver (aba Soft Constraints e Estimativa) sao aplicados ao payload enviado ao solver.">
+                            Comparar algoritmos (benchmark legado vs. solver)
+                        </label>
+                    </div>
+                    <div id="compareAlgorithmsOptions" class="mt-3" style="display:none;">
+                        <div class="form-group">
+                            <label class="font-weight-bold" for="base_allocation_state_id"
+                                data-toggle="tooltip" data-placement="top"
+                                title="Estado de alocacao (travas manuais) usado como ponto de partida identico para ambos os algoritmos.">
+                                Estado base
+                            </label>
+                            <select class="form-control" id="base_allocation_state_id"
+                                name="base_allocation_state_id"
+                                form="distributesForm">
+                                <option value="">Carregando estados...</option>
+                            </select>
+                            <small class="form-text text-muted">
+                                Salve um estado em "Histórico de Estados" antes de comparar.
+                            </small>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer bg-light">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
-                <button type="submit" form="distributesForm" class="btn btn-primary" id="btn-exec-distribution"
-                    onclick="return confirm('Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!')">
+                <button type="submit" form="distributesForm" class="btn btn-primary" id="btn-exec-distribution">
                     Executar Solver
                 </button>
             </div>
@@ -548,6 +577,7 @@ $( function() {
     setTimeout( progress2, 50 );
 
     var trackingJob = false;
+    var wasComparison = false;
     function progressDistribution() {
         $.ajax({
             url: window.location.origin+'/monitor/getDistributionProcess',
@@ -556,8 +586,30 @@ $( function() {
                 if(json && 'progress' in json){
                     var isFailed = json['failed'] || (json['data'] && JSON.parse(json['data'])['status'] === 'error');
                     var isCompleted = json['status'] === 'completed';
+                    var isComparison = json['status'] === 'comparison';
 
-                    if(!isFailed && !isCompleted){
+                    if(isComparison){
+                        trackingJob = true;
+                        wasComparison = true;
+                        document.getElementById("btn-distributes-spinner").style.display = 'inline-block';
+                        document.getElementById("btn-distributes").disabled = true;
+                        $('#rooms-flash').empty();
+                        $('#rooms-flash').append("<p id='info-message' class='alert alert-info'>" +
+                            (json['message'] || 'Comparação de algoritmos em execução.') +
+                            " <a href='/comparison-reports'>Ver relatórios</a></p>");
+                    }else if(wasComparison){
+                        // A comparacao terminou (flag removida, cache restaurado).
+                        // Nao mostrar mensagem de "Distribuicao concluida".
+                        wasComparison = false;
+                        trackingJob = false;
+                        document.getElementById("btn-distributes-spinner").style.display = 'none';
+                        document.getElementById("btn-distributes").disabled = false;
+                        $('#rooms-flash').empty();
+                        $('#rooms-flash').append("<p id='success-message' class='alert alert-success'>" +
+                            "Comparação concluída. O solver foi disparado e o resultado aparecerá em " +
+                            "<a href='/comparison-reports'>Relatórios de Comparação</a> quando o solver responder.</p>");
+                        return;
+                    }else if(!isFailed && !isCompleted){
                         trackingJob = true;
 
                         document.getElementById("btn-stop-distribution").style.display = 'inline-block';
@@ -621,6 +673,7 @@ $( function() {
                     document.getElementById("btn-fallback-distribution").style.display = 'none';
                     document.getElementById("btn-distributes-spinner").style.display = 'none';
                     trackingJob = false;
+                    wasComparison = false;
                 }
 
                 setTimeout( progressDistribution, 1000);
@@ -732,28 +785,105 @@ $( function() {
         $(this).find('[data-toggle="tooltip"]').tooltip('dispose');
     });
 
+    function updateDistributionButton() {
+        var legacy = $('#use_legacy').is(':checked');
+        var compare = $('#compare_algorithms').is(':checked');
+        var btn = $('#btn-exec-distribution');
+
+        if (compare) {
+            btn.text('Executar Comparação (Benchmark)');
+        } else if (legacy) {
+            btn.text('Executar Distribuicao Legada');
+        } else {
+            btn.text('Executar Solver');
+        }
+    }
+
     function toggleLegacyMode() {
         var legacy = $('#use_legacy').is(':checked');
-        var btn = $('#btn-exec-distribution');
         var softTab = $('#tab-soft-link');
         var estTab = $('#tab-estimativa-link');
 
         if (legacy) {
-            btn.text('Executar Distribuicao Legada');
             softTab.addClass('disabled').css('pointer-events', 'none').css('opacity', '0.5');
             estTab.addClass('disabled').css('pointer-events', 'none').css('opacity', '0.5');
             if ($('#tab-soft').hasClass('show active') || $('#tab-estimativa').hasClass('show active')) {
                 $('#tab-hard-link').tab('show');
             }
         } else {
-            btn.text('Executar Solver');
             softTab.removeClass('disabled').css('pointer-events', '').css('opacity', '');
             estTab.removeClass('disabled').css('pointer-events', '').css('opacity', '');
         }
+
+        updateDistributionButton();
+    }
+
+    function toggleCompareMode() {
+        var compare = $('#compare_algorithms').is(':checked');
+        var options = $('#compareAlgorithmsOptions');
+        var legacySwitch = $('#use_legacy');
+
+        if (compare) {
+            options.slideDown();
+            legacySwitch.prop('disabled', true);
+            legacySwitch.closest('.custom-control').css('opacity', '0.5');
+            loadBaseAllocationStates();
+        } else {
+            options.slideUp();
+            legacySwitch.prop('disabled', false);
+            legacySwitch.closest('.custom-control').css('opacity', '');
+        }
+
+        toggleLegacyMode();
+    }
+
+    function loadBaseAllocationStates() {
+        $.ajax({
+            url: "{{ route('allocation-states.index') }}",
+            data: { page: 1 },
+            dataType: 'json',
+            success: function(data) {
+                var select = $('#base_allocation_state_id');
+                select.empty();
+                if (data.states.length === 0) {
+                    select.append('<option value="">Nenhum estado salvo. Salve um estado primeiro.</option>');
+                    return;
+                }
+                select.append('<option value="">Selecione um estado base...</option>');
+                data.states.forEach(function(state) {
+                    select.append('<option value="' + state.id + '">' +
+                        escapeHtml(state.name) + ' (' + escapeHtml(state.created_at) + ')</option>');
+                });
+            },
+            error: function() {
+                var select = $('#base_allocation_state_id');
+                select.empty();
+                select.append('<option value="">Erro ao carregar estados.</option>');
+            }
+        });
     }
 
     $('#use_legacy').on('change', toggleLegacyMode);
+    $('#compare_algorithms').on('change', toggleCompareMode);
     toggleLegacyMode();
+
+    $('#distributesForm').on('submit', function(e) {
+        var compare = $('#compare_algorithms').is(':checked');
+        var legacy = $('#use_legacy').is(':checked');
+
+        var message;
+        if (compare) {
+            message = 'Iniciar comparação de algoritmos (benchmark)? A distribuição de produção NÃO será alterada.';
+        } else if (legacy) {
+            message = 'Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!';
+        } else {
+            message = 'Você tem certeza? Redistribuir as turmas irá desfazer a distribuição atual!';
+        }
+
+        if (!confirm(message)) {
+            e.preventDefault();
+        }
+    });
 });
 </script>
 @endsection

@@ -28,6 +28,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
     public int $schoolTermId;
     public int $baseAllocationStateId;
     public array $roomIds;
+    public array $solverConfig;
 
     public ?int $comparisonReportId = null;
 
@@ -40,11 +41,12 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         return 1;
     }
 
-    public function __construct(int $schoolTermId, int $baseAllocationStateId, array $roomIds)
+    public function __construct(int $schoolTermId, int $baseAllocationStateId, array $roomIds, array $solverConfig = [])
     {
         $this->schoolTermId = $schoolTermId;
         $this->baseAllocationStateId = $baseAllocationStateId;
         $this->roomIds = $roomIds;
+        $this->solverConfig = $solverConfig;
     }
 
     public function uniqueId(): string
@@ -71,6 +73,12 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         $cacheKey = "allocation:{$term->id}";
         $previousCache = Cache::get($cacheKey);
 
+        // Flag para que o MonitorController::getDistributionProcess()
+        // saiba que o cache esta sendo escrito pelo benchmarking (legado
+        // rodando dentro da comparacao) e nao por uma distribuicao real,
+        // evitando que o frontend exiba "Distribuicao concluida".
+        Cache::put("comparison:running:{$term->id}", $report->id, now()->addHours(4));
+
         $legacyAllocations = [];
         $solverPayload = null;
         $solveStart = microtime(true);
@@ -89,7 +97,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             //    heuristica legada. A construcao e pura (leituras), logo o
             //    rollback posterior nao afeta o array em memoria.
             $solverPayload = (new RoomAllocationPayloadBuilder())
-                ->build($term, $this->roomIds);
+                ->build($term, $this->roomIds, $this->solverConfig);
 
             // 3. Executa a heuristica legada sincronamente dentro do
             //    contexto transacional. Suas escritas em school_classes
@@ -110,6 +118,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             }
 
             $this->restoreCache($cacheKey, $previousCache);
+            Cache::forget("comparison:running:{$term->id}");
 
             $report->update(['status' => 'failed']);
 
@@ -118,6 +127,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
 
         $solveTime = microtime(true) - $solveStart;
         $this->restoreCache($cacheKey, $previousCache);
+        Cache::forget("comparison:running:{$term->id}");
 
         // 6. Avaliacao isomorfica do resultado legado via Evaluator (puro,
         //    sem escrita em DB). O mapa coletado ja esta em memoria, logo o
@@ -323,6 +333,8 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
                 'status' => 'failed',
             ]);
         }
+
+        Cache::forget("comparison:running:{$this->schoolTermId}");
 
         Log::error('ProcessAlgorithmComparison: failed', [
             'school_term_id' => $this->schoolTermId,

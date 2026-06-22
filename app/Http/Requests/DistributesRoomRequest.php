@@ -54,6 +54,8 @@ class DistributesRoomRequest extends FormRequest
         return [
             'sync_enrollment' => 'nullable|boolean',
             'use_legacy' => 'nullable|boolean',
+            'compare_algorithms' => 'nullable|boolean',
+            'base_allocation_state_id' => 'nullable|integer|exists:allocation_states,id',
 
             'rooms_id' => 'required|array',
             'rooms_id.*' => 'required|numeric',
