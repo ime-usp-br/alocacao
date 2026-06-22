@@ -13,45 +13,72 @@
                 <a href="{{ route('solverlogs.index') }}" class="btn btn-outline-secondary btn-sm">&larr; Voltar</a>
             </div>
 
-            <div class="card mb-4">
-                <div class="card-header bg-primary text-white">
-                    Informações Gerais
-                </div>
-                <div class="card-body">
-                    <table class="table table-borderless table-sm" style="font-size:14px;">
-                        <tr>
-                            <th style="width: 200px;">Job ID</th>
-                            <td style="font-family: monospace;">{{ $solverLog->job_id }}</td>
-                        </tr>
-                        <tr>
-                            <th>Semestre</th>
-                            <td>{{ $solverLog->schoolTerm ? $solverLog->schoolTerm->year . '.' . $solverLog->schoolTerm->period : '-' }}</td>
-                        </tr>
-                        <tr>
-                            <th>Status</th>
-                            <td>{{ $solverLog->status }}</td>
-                        </tr>
-                        <tr>
-                            <th>Alocadas</th>
-                            <td>{{ $solverLog->allocations_count }}</td>
-                        </tr>
-                        <tr>
-                            <th>Não Alocadas</th>
-                            <td>{{ $solverLog->unassigned_count }}</td>
-                        </tr>
-                        <tr>
-                            <th>Manuais</th>
-                            <td>{{ $solverLog->manual_count }}</td>
-                        </tr>
-                        <tr>
-                            <th>Enviado em</th>
-                            <td>{{ $solverLog->dispatched_at ? $solverLog->dispatched_at->format('d/m/Y H:i:s') : '-' }}</td>
-                        </tr>
-                        <tr>
-                            <th>Respondido em</th>
-                            <td>{{ $solverLog->responded_at ? $solverLog->responded_at->format('d/m/Y H:i:s') : '-' }}</td>
-                        </tr>
-                    </table>
+            <div class="mb-4">
+                <div class="row">
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card text-center h-100 border-primary">
+                            <div class="card-body py-3">
+                                <div class="text-muted small text-uppercase fw-semibold">Status</div>
+                                <div class="fs-5 fw-bold mt-1">{{ $solverLog->status }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card text-center h-100 border-success">
+                            <div class="card-body py-3">
+                                <div class="text-muted small text-uppercase fw-semibold">Alocadas</div>
+                                <div class="fs-3 fw-bold mt-1 text-success">{{ $solverLog->allocations_count }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card text-center h-100 border-danger">
+                            <div class="card-body py-3">
+                                <div class="text-muted small text-uppercase fw-semibold">Não Alocadas</div>
+                                <div class="fs-3 fw-bold mt-1 text-danger">{{ $solverLog->unassigned_count }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card text-center h-100 border-warning">
+                            <div class="card-body py-3">
+                                <div class="text-muted small text-uppercase fw-semibold">Manuais</div>
+                                <div class="fs-3 fw-bold mt-1 text-warning">{{ $solverLog->manual_count }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body py-2 d-flex justify-content-between align-items-center" style="font-size:14px;">
+                                <span class="text-muted text-uppercase fw-semibold small">Job ID</span>
+                                <span style="font-family: monospace;">{{ $solverLog->job_id }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body py-2 d-flex justify-content-between align-items-center" style="font-size:14px;">
+                                <span class="text-muted text-uppercase fw-semibold small">Semestre</span>
+                                <span>{{ $solverLog->schoolTerm ? $solverLog->schoolTerm->year . '.' . $solverLog->schoolTerm->period : '-' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body py-2 d-flex justify-content-between align-items-center" style="font-size:14px;">
+                                <span class="text-muted text-uppercase fw-semibold small">Enviado em</span>
+                                <span>{{ $solverLog->dispatched_at ? $solverLog->dispatched_at->format('d/m/Y H:i:s') : '-' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body py-2 d-flex justify-content-between align-items-center" style="font-size:14px;">
+                                <span class="text-muted text-uppercase fw-semibold small">Respondido em</span>
+                                <span>{{ $solverLog->responded_at ? $solverLog->responded_at->format('d/m/Y H:i:s') : '-' }}</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -87,12 +114,37 @@
 @parent
 <script>
 function copyToClipboard(elementId) {
-    const text = document.getElementById(elementId).innerText;
-    navigator.clipboard.writeText(text).then(function() {
+    const el = document.getElementById(elementId);
+    if (!el) {
+        alert('Nada para copiar.');
+        return;
+    }
+    const text = el.innerText;
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function() {
+            alert('Conteúdo copiado para a área de transferência.');
+        }, function() {
+            fallbackCopyText(text);
+        });
+    } else {
+        fallbackCopyText(text);
+    }
+}
+
+function fallbackCopyText(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
         alert('Conteúdo copiado para a área de transferência.');
-    }, function() {
+    } catch (err) {
         alert('Não foi possível copiar.');
-    });
+    }
+    document.body.removeChild(textarea);
 }
 </script>
 @endsection
