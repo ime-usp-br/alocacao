@@ -271,6 +271,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="d-flex justify-content-center" id="allocationStatesPagination"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
@@ -635,13 +636,16 @@ $( function() {
     }
     setTimeout( progressDistribution, 50 );
 
-    function loadAllocationStates() {
+    function loadAllocationStates(page) {
+        page = page || 1;
         $.ajax({
             url: "{{ route('allocation-states.index') }}",
+            data: { page: page },
             dataType: 'json',
             success: function(data) {
                 var tbody = $('#allocationStatesTable tbody');
                 tbody.empty();
+                $('#allocationStatesPagination').empty();
 
                 if (data.states.length === 0) {
                     tbody.append('<tr><td colspan="3" class="text-center">Nenhum estado salvo.</td></tr>');
@@ -667,11 +671,49 @@ $( function() {
                     '</tr>';
                     tbody.append(row);
                 });
+
+                renderAllocationStatesPagination(data.current_page, data.last_page);
             },
             error: function() {
                 $('#allocationStatesTable tbody').html('<tr><td colspan="3" class="text-center text-danger">Erro ao carregar estados.</td></tr>');
+                $('#allocationStatesPagination').empty();
             }
         });
+    }
+
+    function renderAllocationStatesPagination(current, last) {
+        if (last <= 1) {
+            return;
+        }
+        var nav = $('<nav><ul class="pagination"></ul></nav>');
+        var ul = nav.find('ul');
+
+        var addLink = function(label, page, disabled, active) {
+            var li = $('<li class="page-item"></li>');
+            if (disabled) li.addClass('disabled');
+            if (active) li.addClass('active');
+            var a = $('<a class="page-link" href="#">' + label + '</a>');
+            if (!disabled && !active) {
+                a.on('click', function(e) {
+                    e.preventDefault();
+                    loadAllocationStates(page);
+                });
+            } else {
+                a.on('click', function(e) { e.preventDefault(); });
+            }
+            li.append(a);
+            ul.append(li);
+        };
+
+        addLink('&laquo;', current - 1, current === 1, false);
+
+        for (var p = 1; p <= last; p++) {
+            addLink(p, p, false, p === current);
+        }
+
+        addLink('&raquo;', current + 1, current === last, false);
+
+        $('#allocationStatesPagination').html(nav);
     }
 
     function escapeHtml(text) {

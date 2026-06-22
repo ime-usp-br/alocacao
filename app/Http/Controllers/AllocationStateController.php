@@ -27,14 +27,17 @@ class AllocationStateController extends Controller
 
         $states = AllocationState::whereBelongsTo($schoolterm)
             ->orderByDesc('created_at')
-            ->get();
+            ->paginate(10);
 
         $cached = Cache::get("allocation:{$schoolterm->id}");
         $isSolving = ($cached['status'] ?? '') === 'solving';
 
         return response()->json([
-            'states' => $states,
+            'states' => $states->items(),
             'is_solving' => $isSolving,
+            'current_page' => $states->currentPage(),
+            'last_page' => $states->lastPage(),
+            'total' => $states->total(),
         ]);
     }
 
