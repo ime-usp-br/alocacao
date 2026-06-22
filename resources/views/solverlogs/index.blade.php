@@ -56,7 +56,7 @@
                 </table>
 
                 <div class="d-flex justify-content-center">
-                    {{ $logs->links() }}
+                    {{ $logs->links('pagination::bootstrap-4') }}
                 </div>
             @else
                 <p class="text-center">Nenhum log do solver encontrado.</p>
