@@ -104,11 +104,12 @@ class AllocationEvaluatorServiceTest extends TestCase
     }
 
     /** @test */
-    public function breakdown_block_adherence_for_freshman_and_postgrad()
+    public function breakdown_block_preference_for_postgrad_and_undergrad()
     {
         $term = SchoolTerm::factory()->create();
 
-        // Freshman (Graduação, mandatory, 1st semester) => expected block A
+        // Freshman (Graduação, obrigatória, 1º semestre) => mesma régua de
+        // qualquer graduação: prefere Bloco B (grad no A é indesejável).
         $freshman = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
             'estmtr' => 30,
             'externa' => false,
@@ -116,13 +117,13 @@ class AllocationEvaluatorServiceTest extends TestCase
         $ci = \App\Models\CourseInformation::factory()->mandatory()->semester('1')->create();
         $freshman->courseinformations()->attach($ci);
 
-        // Post-grad => expected block B
+        // Pós-graduação => prefere Bloco A (pós no B é indesejável).
         $postgrad = SchoolClass::factory()->withSchoolTerm($term)->graduate()->create([
             'estmtr' => 20,
             'externa' => false,
         ]);
 
-        // Regular undergrad (not freshman) => no expected block
+        // Graduação não-caloura (3º semestre) => prefere Bloco B.
         $regular = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
             'estmtr' => 40,
             'externa' => false,
@@ -144,14 +145,46 @@ class AllocationEvaluatorServiceTest extends TestCase
         $rp = collect($bd)->firstWhere('class_id', $postgrad->id);
         $rr = collect($bd)->firstWhere('class_id', $regular->id);
 
-        $this->assertEquals('A', $rf['expected_block']);
+        // Calouro: prefere B, foi pro A (indesejável): expected B, actual A.
+        $this->assertEquals('B', $rf['expected_block']);
         $this->assertEquals('A', $rf['actual_block']);
 
-        $this->assertEquals('B', $rp['expected_block']);
+        // Pós prefere A, foi pro B (indesejável): expected A, actual B.
+        $this->assertEquals('A', $rp['expected_block']);
         $this->assertEquals('B', $rp['actual_block']);
 
-        $this->assertNull($rr['expected_block']);
+        // Graduação não-caloura prefere B, foi pro A (indesejável): expected B, actual A.
+        $this->assertEquals('B', $rr['expected_block']);
         $this->assertEquals('A', $rr['actual_block']);
+    }
+
+    /** @test */
+    public function breakdown_mixed_fusion_has_no_block_preference()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        // Dobradinha mista: graduação + pós-graduação.
+        $grad = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $pos = SchoolClass::factory()->withSchoolTerm($term)->graduate()->create([
+            'estmtr' => 20,
+            'externa' => false,
+        ]);
+
+        $fusion = \App\Models\Fusion::factory()->withMaster($grad)->create();
+        $grad->fusion()->associate($fusion)->save();
+        $pos->fusion()->associate($fusion)->save();
+
+        $roomA = Room::factory()->create(['nome' => 'A101', 'assentos' => 80]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [$grad->id => $roomA->id]);
+
+        $this->assertCount(1, $bd);
+        $this->assertNull($bd[0]['expected_block']);
+        $this->assertEquals('A', $bd[0]['actual_block']);
     }
 
     /** @test */

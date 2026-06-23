@@ -142,7 +142,7 @@ class AllocationEvaluatorService
                 continue;
             }
 
-            $result[] = $this->buildRecord($class, (float) $class->estmtr, $allocations, $rooms, $epsilon);
+            $result[] = $this->buildRecord($class, (float) $class->estmtr, $allocations, $rooms, $epsilon, null, $this->expectedBlock($class));
         }
 
         foreach ($fused as $children) {
@@ -165,7 +165,7 @@ class AllocationEvaluatorService
             $representative = $children->firstWhere('id', $masterId)
                 ?? $children->sortBy('id')->first();
 
-            $result[] = $this->buildRecord($representative, $demand, $allocations, $rooms, $epsilon, $masterId);
+            $result[] = $this->buildRecord($representative, $demand, $allocations, $rooms, $epsilon, $masterId, $this->expectedBlockForGroup($children));
         }
 
         return $result;
@@ -175,7 +175,7 @@ class AllocationEvaluatorService
      * Constrói um registro do breakdown para uma unidade de alocação.
      *
      * @param SchoolClass $class Turma representante (a própria para solo, o
-     *                           mestre para fusões) — usada para bloco esperado.
+     *                           mestre para fusões).
      * @param float $demand Demanda da unidade (estmtr da turma ou soma das
      *                       filhas da dobradinha).
      * @param array<int, int|null> $allocations Mapa [class_id => room_id].
@@ -183,8 +183,12 @@ class AllocationEvaluatorService
      * @param float $epsilon Tolerância numérica.
      * @param int|null $recordId Id do registro (master_id para fusões; null
      *                            usa o id da turma representante).
+     * @param string|null $expectedBlock Bloco de preferência da unidade (já
+     *                                    computado considerando todas as filhas
+     *                                    da fusão); null usa a turma represen-
+     *                                    tante.
      */
-    private function buildRecord(SchoolClass $class, float $demand, array $allocations, Collection $rooms, float $epsilon, ?int $recordId = null): array
+    private function buildRecord(SchoolClass $class, float $demand, array $allocations, Collection $rooms, float $epsilon, ?int $recordId = null, ?string $expectedBlock = null): array
     {
         $classId = $recordId ?? $class->id;
 
@@ -232,7 +236,7 @@ class AllocationEvaluatorService
             'waste' => $waste,
             'claustrophobia' => $claustrophobia,
             'in_comfort_zone' => $inComfortZone,
-            'expected_block' => $this->expectedBlock($class),
+            'expected_block' => $expectedBlock,
             'actual_block' => $actualBlock,
             'room_id' => $allocated ? (int) $roomId : null,
         ];
@@ -280,35 +284,63 @@ class AllocationEvaluatorService
     }
 
     /**
-     * Determina o bloco esperado para a turma, ou null quando ela não está
-     * sujeita a restrição geográfica.
+     * Determina o bloco de preferência (soft) de uma turma standalone, ou null
+     * quando ela não é sujeito de aderência de bloco.
+     *
+     * Modelo:
+     *  - Pós-graduação prefere o Bloco A (pós no Bloco B é indesejável, mas
+     *    aceitável).
+     *  - Toda graduação prefere o Bloco B (graduação no
+     *    Bloco A é indesejável, mas aceitável).
      */
     private function expectedBlock(SchoolClass $class): ?string
     {
         if ($class->tiptur === 'Pós Graduação') {
-            return 'B';
+            return 'A';
         }
 
-        if ($class->tiptur === 'Graduação' && $this->isFreshman($class)) {
-            return 'A';
+        if ($class->tiptur === 'Graduação') {
+            return 'B';
         }
 
         return null;
     }
 
     /**
-     * Identifica calouros pela mesma régua do payload builder: Graduação com
-     * course_information obrigatória (tipobg = 'O') do 1º ou 2º semestre ideal.
+     * Determina o bloco de preferência de uma dobradinha a partir das turmas
+     * filhas, ou null quando a unidade não é sujeito de aderência de bloco.
+     *
+     *  - Dobradinhas mistas (graduação + pós) não têm bloco de preferência:
+     *    retornam null e ficam de fora da aderência e da matriz de bloco.
+     *  - Dobradinha só de pós → Bloco A.
+     *  - Dobradinha só de graduação → Bloco B.
      */
-    private function isFreshman(SchoolClass $class): bool
+    private function expectedBlockForGroup(Collection $children): ?string
     {
-        foreach ($class->courseinformations as $ci) {
-            if ($ci->tipobg === 'O' && in_array($ci->numsemidl, ['1', '2'], true)) {
-                return true;
+        $hasPos = false;
+        $hasGrad = false;
+
+        foreach ($children as $child) {
+            if ($child->tiptur === 'Pós Graduação') {
+                $hasPos = true;
+            } elseif ($child->tiptur === 'Graduação') {
+                $hasGrad = true;
             }
         }
 
-        return false;
+        if ($hasPos && $hasGrad) {
+            return null;
+        }
+
+        if ($hasPos) {
+            return 'A';
+        }
+
+        if ($hasGrad) {
+            return 'B';
+        }
+
+        return null;
     }
 
     /**

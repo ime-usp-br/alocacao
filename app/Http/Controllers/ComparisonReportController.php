@@ -469,7 +469,10 @@ class ComparisonReportController extends Controller
 
     /**
      * Matriz de contingência de bloco.
-     * Linhas: expected_block (A, B). Colunas: actual_block (A, B, Outro, Não alocada).
+     * Linhas: expected_block (A = pós-graduação, B = graduação).
+     * Colunas: actual_block (A, B, Outro, Não alocada).
+     * Dobradinhas mistas (grad + pós, sem preferência) ficam de fora pois têm
+     * expected_block null.
      */
     protected function buildBlockMatrix(array $breakdown): array
     {

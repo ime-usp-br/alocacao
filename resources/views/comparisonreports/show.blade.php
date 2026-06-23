@@ -45,7 +45,7 @@
         'comfort_zone_rate'            => 'Percentual de turmas alocadas em salas que possuem a margem ideal de assentos livres (entre 10% e 25% a mais que a demanda).',
         'avg_waste_per_class'          => 'Média de assentos vazios que excedem o limite máximo de 25% de folga nas turmas alocadas. Quanto menor, melhor.',
         'avg_claustrophobia_per_class' => 'Média de assentos faltantes para atingir a margem de segurança de 10% de folga nas turmas alocadas. Quanto menor, melhor.',
-        'block_adherence_rate'         => 'Percentual de turmas que respeitaram a restrição geográfica (ex: Calouros no Bloco A, Pós-graduação no Bloco B).',
+        'block_adherence_rate'         => 'Percentual de turmas que respeitaram o bloco de preferência: pós-graduação no Bloco A e graduação no Bloco B. Dobradadinhas mistas (grad + pós) não são avaliadas.',
         'solve_time_seconds'           => 'Tempo total em segundos gasto pelo algoritmo para encontrar a solução. Quanto menor, melhor.',
     ];
 
@@ -385,8 +385,9 @@
                     {{-- ============================ --}}
                     <h3 class="mb-3">Matriz de Contingência de Bloco</h3>
                     <p class="text-muted small mb-3">
-                        Linhas = bloco esperado (calouros → A; pós-graduação → B).
+                        Linhas = bloco de preferência (pós-graduação → A; graduação → B).
                         Colunas = bloco real da sala alocada.
+                        Dobradinhas mistas (grad + pós) não aparecem.
                         Células coloridas pela frequência relativa.
                     </p>
                     <div class="row mb-5">
