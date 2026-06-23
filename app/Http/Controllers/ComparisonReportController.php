@@ -204,38 +204,6 @@ class ComparisonReportController extends Controller
             'solver' => $this->engineSummary($solverAllocated),
         ];
 
-        // --- Paired analysis (same class ids, allocated by both) ---
-        $paired = [];
-        $commonIds = $legacyById->keys()->intersect($solverById->keys())->all();
-        foreach ($commonIds as $cid) {
-            $l = $legacyById->get($cid);
-            $s = $solverById->get($cid);
-            if (! $l['allocated'] || ! $s['allocated']) {
-                continue;
-            }
-            $paired[] = [
-                'class_id' => $cid,
-                'demand' => $l['demand'],
-                'occupancy_legacy' => $l['occupancy_ratio'],
-                'occupancy_solver' => $s['occupancy_ratio'],
-                'diff_occupancy' => $s['occupancy_ratio'] - $l['occupancy_ratio'],
-                'waste_legacy' => $l['waste'],
-                'waste_solver' => $s['waste'],
-                'diff_waste' => $s['waste'] - $l['waste'],
-                'claustrophobia_legacy' => $l['claustrophobia'],
-                'claustrophobia_solver' => $s['claustrophobia'],
-                'diff_claustrophobia' => $s['claustrophobia'] - $l['claustrophobia'],
-                'room_changed' => $l['room_id'] !== $s['room_id'],
-                'capacity_legacy' => $l['capacity'],
-                'capacity_solver' => $s['capacity'],
-                'capacity_delta' => $s['capacity'] - $l['capacity'],
-                'block_transition' => ($l['actual_block'] ?? 'none') . '→' . ($s['actual_block'] ?? 'none'),
-                'expected_block' => $l['expected_block'],
-            ];
-        }
-
-        $pairedStats = $this->computePairedStats($paired);
-
         // --- Histograms (server-side bins) ---
         $occBinsLegacy = $this->buildHistogramBins(array_column($legacyAllocated, 'occupancy_ratio'), 0.0, 0.1, 20);
         $occBinsSolver = $this->buildHistogramBins(array_column($solverAllocated, 'occupancy_ratio'), 0.0, 0.1, 20);
@@ -244,67 +212,21 @@ class ComparisonReportController extends Controller
             'legacy' => $occBinsLegacy['counts'],
             'solver' => $occBinsSolver['counts'],
         ];
-        $diffOccBins = $this->buildHistogramBins(array_column($paired, 'diff_occupancy'), -1.0, 0.1, 20);
-        $diffWasteBins = $this->buildHistogramBins(array_column($paired, 'diff_waste'), -30.0, 3.0, 20);
-        $diffClausBins = $this->buildHistogramBins(array_column($paired, 'diff_claustrophobia'), -30.0, 3.0, 20);
 
         // --- Block contingency tables ---
         $blockCategories = ['A', 'B', 'Outro', 'Não alocada'];
         $legacyBlockMatrix = $this->buildBlockMatrix($legacyBreakdown);
         $solverBlockMatrix = $this->buildBlockMatrix($solverBreakdown);
 
-        // --- Agreement / transition ---
-        $sameRoom = 0;
-        $changedRoom = 0;
-        $capDeltas = [];
-        $blockTransitions = [];
-        foreach ($paired as $p) {
-            if ($p['room_changed']) {
-                $changedRoom++;
-                $capDeltas[] = $p['capacity_delta'];
-            } else {
-                $sameRoom++;
-            }
-            $bt = $p['block_transition'];
-            $blockTransitions[$bt] = ($blockTransitions[$bt] ?? 0) + 1;
-        }
-        $totalPaired = count($paired);
-        $agreementRate = $totalPaired > 0 ? ($sameRoom / $totalPaired) * 100.0 : 0.0;
-
-        $capacityDeltaBins = [
-            'labels' => ['< -30', '-30 a -20', '-20 a -10', '-10 a 0', '0', '0 a 10', '10 a 20', '20 a 30', '> 30'],
-            'legacy' => array_fill(0, 9, 0),
-            'solver' => array_fill(0, 9, 0),
-        ];
-        foreach ($capDeltas as $d) {
-            $idx = $this->capacityDeltaBinIndex($d);
-            $capacityDeltaBins['solver'][$idx]++;
-        }
-
         return [
             'summary' => $summary,
-            'paired' => [
-                'records' => $paired,
-                'stats' => $pairedStats,
-                'n_pairs' => $totalPaired,
-                'same_room' => $sameRoom,
-                'changed_room' => $changedRoom,
-                'agreement_rate' => $agreementRate,
-            ],
             'histograms' => [
                 'occupancy' => $occBins,
-                'diff_occupancy' => $diffOccBins,
-                'diff_waste' => $diffWasteBins,
-                'diff_claustrophobia' => $diffClausBins,
             ],
             'block_contingency' => [
                 'categories' => $blockCategories,
                 'legacy' => $legacyBlockMatrix,
                 'solver' => $solverBlockMatrix,
-            ],
-            'agreement' => [
-                'capacity_delta_bins' => $capacityDeltaBins,
-                'block_transitions' => $blockTransitions,
             ],
         ];
     }
@@ -396,51 +318,6 @@ class ComparisonReportController extends Controller
     }
 
     /**
-     * Estatísticas pareadas sobre diffs (occupancy, waste, claustrophobia).
-     */
-    protected function computePairedStats(array $paired): array
-    {
-        $stats = [];
-        foreach (['diff_occupancy', 'diff_waste', 'diff_claustrophobia'] as $key) {
-            $vals = array_column($paired, $key);
-            $clean = array_values(array_filter($vals, fn ($v) => $v !== null));
-            $n = count($clean);
-            if ($n === 0) {
-                $stats[$key] = [
-                    'n' => 0, 'mean_diff' => null, 'sd_diff' => null,
-                    'se_diff' => null, 'ci95_lower' => null, 'ci95_upper' => null,
-                    'median_diff' => null, 'n_positive' => 0, 'n_negative' => 0,
-                ];
-                continue;
-            }
-            $mean = array_sum($clean) / $n;
-            $sd = $this->sampleSd($clean, $mean);
-            $se = $sd / sqrt($n);
-            $z = 1.96; // normal approx (n large)
-            $ciLo = $mean - $z * $se;
-            $ciHi = $mean + $z * $se;
-            sort($clean);
-            $median = $this->percentile($clean, 0.5);
-            $pos = count(array_filter($clean, fn ($v) => $v > 0));
-            $neg = count(array_filter($clean, fn ($v) => $v < 0));
-
-            $stats[$key] = [
-                'n' => $n,
-                'mean_diff' => $mean,
-                'sd_diff' => $sd,
-                'se_diff' => $se,
-                'ci95_lower' => $ciLo,
-                'ci95_upper' => $ciHi,
-                'median_diff' => $median,
-                'n_positive' => $pos,
-                'n_negative' => $neg,
-            ];
-        }
-
-        return $stats;
-    }
-
-    /**
      * Constrói bins de histograma com range fixo [start, start+step*bins).
      * Valores fora do range caem no primeiro/último bin (clamp).
      */
@@ -499,36 +376,6 @@ class ComparisonReportController extends Controller
         }
 
         return $matrix;
-    }
-
-    protected function capacityDeltaBinIndex(float $delta): int
-    {
-        if ($delta < -30) {
-            return 0;
-        }
-        if ($delta < -20) {
-            return 1;
-        }
-        if ($delta < -10) {
-            return 2;
-        }
-        if ($delta < 0) {
-            return 3;
-        }
-        if ($delta == 0) {
-            return 4;
-        }
-        if ($delta <= 10) {
-            return 5;
-        }
-        if ($delta <= 20) {
-            return 6;
-        }
-        if ($delta <= 30) {
-            return 7;
-        }
-
-        return 8;
     }
 
     /**

@@ -430,88 +430,6 @@
                         </div>
                     </div>
 
-                    {{-- ============================ --}}
-                    {{-- Análise Pareada            --}}
-                    {{-- ============================ --}}
-                    <h3 class="mb-3">Análise Pareada (Solver − Legado)</h3>
-                    <p class="text-muted small mb-3">
-                        Desenho pareado: mesmas turmas, mesmo estado base.
-                        IC 95% via aproximação normal (z = 1,96).
-                        Sinal positivo em <em>ocupação</em> = sala mais cheia no Solver;
-                        positivo em <em>desperdício/claustrofobia</em> = piora no Solver.
-                    </p>
-
-                    <div class="row mb-2">
-                        <div class="col-md-4 mb-3">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h6 class="text-muted text-uppercase small fw-bold mb-3">Diferença de Ocupação</h6>
-                                    <div style="position: relative; height: 260px;">
-                                        <canvas id="diffOccupancyChart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h6 class="text-muted text-uppercase small fw-bold mb-3">Diferença de Desperdício</h6>
-                                    <div style="position: relative; height: 260px;">
-                                        <canvas id="diffWasteChart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h6 class="text-muted text-uppercase small fw-bold mb-3">Diferença de Claustrofobia</h6>
-                                    <div style="position: relative; height: 260px;">
-                                        <canvas id="diffClaustrophobiaChart"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card mb-5">
-                        <div class="card-body table-responsive">
-                            <table class="table table-sm table-bordered text-center" style="font-size:13px;">
-                                <thead class="thead-light">
-                                    <tr>
-                                        <th>Métrica</th>
-                                        <th>n pares</th>
-                                        <th>Média do diff</th>
-                                        <th>DP do diff</th>
-                                        <th>EP do diff</th>
-                                        <th>IC 95% inferior</th>
-                                        <th>IC 95% superior</th>
-                                        <th>Mediana do diff</th>
-                                        <th>Positivos (Solver melhor)</th>
-                                        <th>Negativos (Legado melhor)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (['diff_occupancy' => 'Ocupação', 'diff_waste' => 'Desperdício', 'diff_claustrophobia' => 'Claustrofobia'] as $dk => $dl)
-                                        @php $ps = $analytics['paired']['stats'][$dk] ?? []; @endphp
-                                        <tr>
-                                            <td class="text-left">{{ $dl }}</td>
-                                            <td>{{ $ps['n'] ?? 0 }}</td>
-                                            <td>{{ $fmt($ps['mean_diff'] ?? null, 4) }}</td>
-                                            <td>{{ $fmt($ps['sd_diff'] ?? null, 4) }}</td>
-                                            <td>{{ $fmt($ps['se_diff'] ?? null, 4) }}</td>
-                                            <td>{{ $fmt($ps['ci95_lower'] ?? null, 4) }}</td>
-                                            <td>{{ $fmt($ps['ci95_upper'] ?? null, 4) }}</td>
-                                            <td>{{ $fmt($ps['median_diff'] ?? null, 4) }}</td>
-                                            <td>{{ $ps['n_positive'] ?? 0 }}</td>
-                                            <td>{{ $ps['n_negative'] ?? 0 }}</td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
                 @endif
             @else
                 <p class="text-center text-muted">Ainda não há métricas disponíveis para este relatório.</p>
@@ -903,42 +821,9 @@
             },
         });
 
-        // ----- Histogramas Pareados (Diffs) -----
-        function renderDiffBar(canvasId, histData, title, color) {
-            if (!histData || !histData.labels) return;
-            new Chart(document.getElementById(canvasId), {
-                type: 'bar',
-                data: {
-                    labels: histData.labels,
-                    datasets: [{
-                        label: 'Frequência',
-                        data: histData.counts,
-                        backgroundColor: color,
-                        borderColor: color.replace(/0\.5\)/, '1)'),
-                        borderWidth: 1,
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { title: { display: true, text: title } },
-                        y: { beginAtZero: true },
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        annotation: { annotations: {} },
-                    },
-                },
-            });
-        }
-
-        renderDiffBar('diffOccupancyChart', analytics.histograms.diff_occupancy, 'Diff Ocupação', 'rgba(108, 117, 125, 0.6)');
-        renderDiffBar('diffWasteChart', analytics.histograms.diff_waste, 'Diff Desperdício', 'rgba(220, 53, 69, 0.5)');
-        renderDiffBar('diffClaustrophobiaChart', analytics.histograms.diff_claustrophobia, 'Diff Claustrofobia', 'rgba(0, 123, 255, 0.5)');
-
     }
 })();
+
 </script>
 @endif
 <script>
