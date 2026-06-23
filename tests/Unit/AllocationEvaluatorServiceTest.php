@@ -217,4 +217,134 @@ class AllocationEvaluatorServiceTest extends TestCase
         $this->assertEquals(0.0, $r['claustrophobia']);
         $this->assertNull($r['actual_block']);
     }
+
+    /** @test */
+    public function breakdown_collapses_fusion_into_a_single_unit_with_summed_demand()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $master = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $childA = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 20,
+            'externa' => false,
+        ]);
+        $childB = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+
+        $fusion = \App\Models\Fusion::factory()->withMaster($master)->create();
+        $master->fusion()->associate($fusion)->save();
+        $childA->fusion()->associate($fusion)->save();
+        $childB->fusion()->associate($fusion)->save();
+
+        // Sala dimensionada para a demanda somada (80): min comfort = 88,
+        // max comfort = 100. Capacidade 100 => zona de conforto, sem waste.
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [$master->id => $room->id]);
+
+        // Uma única unidade para a dobradinha, keyed pelo master_id.
+        $this->assertCount(1, $bd);
+        $record = $bd[0];
+
+        $this->assertEquals($master->id, $record['class_id']);
+        $this->assertTrue($record['allocated']);
+        $this->assertEquals(80.0, $record['demand']);
+        $this->assertEquals(100.0, $record['capacity']);
+        $this->assertEquals(0.8, $record['occupancy_ratio']);
+        $this->assertTrue($record['in_comfort_zone']);
+        $this->assertEquals(0.0, $record['waste']);
+        $this->assertEquals(0.0, $record['claustrophobia']);
+    }
+
+    /** @test */
+    public function evaluate_counts_a_fusion_as_one_allocation_unit()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $master = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $child = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 50,
+            'externa' => false,
+        ]);
+
+        $fusion = \App\Models\Fusion::factory()->withMaster($master)->create();
+        $master->fusion()->associate($fusion)->save();
+        $child->fusion()->associate($fusion)->save();
+
+        // Sala na zona de conforto para demanda somada 80 (88..100).
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
+
+        $service = new AllocationEvaluatorService();
+        $metrics = $service->evaluate($term, [$master->id => $room->id]);
+
+        // 1 unidade elegível (a dobradinha), 1 alocada => 100%.
+        $this->assertEquals(100.0, $metrics['allocation_rate']);
+        $this->assertEquals(100.0, $metrics['comfort_zone_rate']);
+        $this->assertEquals(0.0, $metrics['avg_waste_per_class']);
+        $this->assertEquals(0.0, $metrics['avg_claustrophobia_per_class']);
+    }
+
+    /** @test */
+    public function evaluate_reports_unallocated_fusion_as_single_unassigned_unit()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $master = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $child = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 50,
+            'externa' => false,
+        ]);
+
+        $fusion = \App\Models\Fusion::factory()->withMaster($master)->create();
+        $master->fusion()->associate($fusion)->save();
+        $child->fusion()->associate($fusion)->save();
+
+        $service = new AllocationEvaluatorService();
+        $metrics = $service->evaluate($term, [$master->id => null]);
+
+        // 1 unidade elegível, 0 alocadas => 0%.
+        $this->assertEquals(0.0, $metrics['allocation_rate']);
+        $this->assertEquals(0.0, $metrics['comfort_zone_rate']);
+    }
+
+    /** @test */
+    public function breakdown_fusion_without_master_falls_back_to_min_child_id()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $childA = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 20,
+            'externa' => false,
+        ]);
+        $childB = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 40,
+            'externa' => false,
+        ]);
+
+        // Fusion sem master_id (edge case): fallback = min id.
+        $fusion = \App\Models\Fusion::create(['master_id' => null]);
+        $childA->fusion()->associate($fusion)->save();
+        $childB->fusion()->associate($fusion)->save();
+
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 80]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [$childA->id => $room->id]);
+
+        $this->assertCount(1, $bd);
+        $this->assertEquals(min($childA->id, $childB->id), $bd[0]['class_id']);
+        $this->assertEquals(60.0, $bd[0]['demand']);
+    }
 }

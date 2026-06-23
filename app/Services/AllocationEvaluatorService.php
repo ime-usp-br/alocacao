@@ -90,10 +90,24 @@ class AllocationEvaluatorService
     }
 
     /**
-     * Retorna o breakdown por turma elegível (stateless, sem escrita no DB).
+     * Retorna o breakdown por unidade de alocação elegível (stateless, sem
+     * escrita no DB).
      *
-     * Cada registro contém as métricas espaciais e de bloco para a turma,
-     * permitindo análises pareadas e distribucionais no controller.
+     * Uma unidade de alocação é uma turma standalone (sem fusão) OU uma
+     * dobradinha inteira (fusão) — esta última conta como 1 registro, com
+     * demanda = soma dos estmtr das turmas filhas, comparada uma única vez
+     * contra a capacidade da sala compartilhada. Isto espelha o modelo de
+     * grupos do solver (RoomAllocationPayloadBuilder::resolveGroups) e a
+     * contagem do legado (ProcessLegacyRoomDistribution::countTotalAllocationUnits),
+     * eliminando a contagem múltipla de dobradinhas que inflava
+     * artificialmente os KPIs e distorcia waste/claustrophobia/comfort zone.
+     *
+     * O identificador do registro (class_id) é o id da turma mestre da fusão
+     * (fusion.master_id), o mesmo group_id usado pelo solver e a chave pela
+     * qual o mapa de alocações (coletado com precedência do mestre) resolve a
+     * sala. Turmas sem fusão usam o próprio id. Isso garante que a análise
+     * pareada (intersect por class_id) case legado e solver para a mesma
+     * dobradinha.
      *
      * @return array<int, array{
      *     class_id: int,
@@ -114,64 +128,114 @@ class AllocationEvaluatorService
         $classes = $this->loadClasses($schoolTerm);
         $rooms = $this->loadRooms($allocations);
 
-        $eligible = $classes->filter(fn (SchoolClass $class) => $this->isEligible($class));
-
         $epsilon = 1e-9;
         $result = [];
 
-        foreach ($eligible as $class) {
-            $roomId = $allocations[$class->id] ?? null;
-            $allocated = $roomId !== null && $rooms->has((int) $roomId);
+        $nonExternal = $classes->filter(fn (SchoolClass $class) => ! $class->externa);
 
-            $demand = (float) $class->estmtr;
-            $capacity = null;
-            $occupancyRatio = null;
-            $waste = 0.0;
-            $claustrophobia = 0.0;
-            $inComfortZone = false;
-            $actualBlock = null;
+        $solo = $nonExternal->filter(fn (SchoolClass $class) => $class->fusion_id === null);
+        $fused = $nonExternal->filter(fn (SchoolClass $class) => $class->fusion_id !== null)
+            ->groupBy('fusion_id');
 
-            if ($allocated) {
-                $room = $rooms->get((int) $roomId);
-                $capacity = (float) $room->assentos;
-                $occupancyRatio = $capacity > 0 ? ($demand / $capacity) : null;
-
-                $minMargin = $demand * ($this->comfortZoneMinPercent / 100.0);
-                $maxMargin = $demand * ($this->comfortZoneMaxPercent / 100.0);
-                $minComfortCapacity = $demand + $minMargin;
-                $maxComfortCapacity = $demand + $maxMargin;
-
-                if ($capacity >= $minComfortCapacity - $epsilon && $capacity <= $maxComfortCapacity + $epsilon) {
-                    $inComfortZone = true;
-                }
-
-                if ($capacity > $maxComfortCapacity + $epsilon) {
-                    $waste = $capacity - $maxComfortCapacity;
-                }
-
-                if ($capacity < $minComfortCapacity - $epsilon) {
-                    $claustrophobia = $minComfortCapacity - $capacity;
-                }
-
-                $actualBlock = $this->roomBlock($room);
+        foreach ($solo as $class) {
+            if (! $this->isEligible($class)) {
+                continue;
             }
 
-            $result[] = [
-                'class_id' => $class->id,
-                'allocated' => $allocated,
-                'demand' => $demand,
-                'capacity' => $capacity,
-                'occupancy_ratio' => $occupancyRatio,
-                'waste' => $waste,
-                'claustrophobia' => $claustrophobia,
-                'in_comfort_zone' => $inComfortZone,
-                'expected_block' => $this->expectedBlock($class),
-                'actual_block' => $actualBlock,
-                'room_id' => $allocated ? (int) $roomId : null,
-            ];
+            $result[] = $this->buildRecord($class, (float) $class->estmtr, $allocations, $rooms, $epsilon);
+        }
+
+        foreach ($fused as $children) {
+            $fusion = $children->first()->fusion;
+            $masterId = $fusion && $fusion->master_id
+                ? (int) $fusion->master_id
+                : (int) $children->min('id');
+
+            $demand = 0.0;
+            foreach ($children as $child) {
+                if ($child->estmtr !== null && $child->estmtr > 0) {
+                    $demand += (float) $child->estmtr;
+                }
+            }
+
+            if ($demand <= 0.0) {
+                continue;
+            }
+
+            $representative = $children->firstWhere('id', $masterId)
+                ?? $children->sortBy('id')->first();
+
+            $result[] = $this->buildRecord($representative, $demand, $allocations, $rooms, $epsilon, $masterId);
         }
 
         return $result;
+    }
+
+    /**
+     * Constrói um registro do breakdown para uma unidade de alocação.
+     *
+     * @param SchoolClass $class Turma representante (a própria para solo, o
+     *                           mestre para fusões) — usada para bloco esperado.
+     * @param float $demand Demanda da unidade (estmtr da turma ou soma das
+     *                       filhas da dobradinha).
+     * @param array<int, int|null> $allocations Mapa [class_id => room_id].
+     * @param Collection<int, Room> $rooms Salas indexadas por id.
+     * @param float $epsilon Tolerância numérica.
+     * @param int|null $recordId Id do registro (master_id para fusões; null
+     *                            usa o id da turma representante).
+     */
+    private function buildRecord(SchoolClass $class, float $demand, array $allocations, Collection $rooms, float $epsilon, ?int $recordId = null): array
+    {
+        $classId = $recordId ?? $class->id;
+
+        $roomId = $allocations[$classId] ?? null;
+        $allocated = $roomId !== null && $rooms->has((int) $roomId);
+
+        $capacity = null;
+        $occupancyRatio = null;
+        $waste = 0.0;
+        $claustrophobia = 0.0;
+        $inComfortZone = false;
+        $actualBlock = null;
+
+        if ($allocated) {
+            $room = $rooms->get((int) $roomId);
+            $capacity = (float) $room->assentos;
+            $occupancyRatio = $capacity > 0 ? ($demand / $capacity) : null;
+
+            $minMargin = $demand * ($this->comfortZoneMinPercent / 100.0);
+            $maxMargin = $demand * ($this->comfortZoneMaxPercent / 100.0);
+            $minComfortCapacity = $demand + $minMargin;
+            $maxComfortCapacity = $demand + $maxMargin;
+
+            if ($capacity >= $minComfortCapacity - $epsilon && $capacity <= $maxComfortCapacity + $epsilon) {
+                $inComfortZone = true;
+            }
+
+            if ($capacity > $maxComfortCapacity + $epsilon) {
+                $waste = $capacity - $maxComfortCapacity;
+            }
+
+            if ($capacity < $minComfortCapacity - $epsilon) {
+                $claustrophobia = $minComfortCapacity - $capacity;
+            }
+
+            $actualBlock = $this->roomBlock($room);
+        }
+
+        return [
+            'class_id' => $classId,
+            'allocated' => $allocated,
+            'demand' => $demand,
+            'capacity' => $capacity,
+            'occupancy_ratio' => $occupancyRatio,
+            'waste' => $waste,
+            'claustrophobia' => $claustrophobia,
+            'in_comfort_zone' => $inComfortZone,
+            'expected_block' => $this->expectedBlock($class),
+            'actual_block' => $actualBlock,
+            'room_id' => $allocated ? (int) $roomId : null,
+        ];
     }
 
     /**
@@ -181,7 +245,7 @@ class AllocationEvaluatorService
     private function loadClasses(SchoolTerm $schoolTerm): Collection
     {
         return SchoolClass::whereBelongsTo($schoolTerm)
-            ->with('courseinformations')
+            ->with(['courseinformations', 'fusion'])
             ->orderBy('id')
             ->get()
             ->keyBy('id');

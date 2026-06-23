@@ -60,11 +60,18 @@ class ComparisonReportController extends Controller
      * Constroi os pontos (demanda, capacidade) para o grafico de dispersao,
      * cruzando os mapas brutos de alocacao com as turmas e salas do semestre.
      *
+     * Dobradinhas (fusões) colapsam em um único ponto: demanda = soma dos
+     * estmtr das filhas, capacidade = sala compartilhada (resolvida via
+     * master_id, mesma chave do mapa de alocações). Isto evita N pontos
+     * empilhados em (demanda individual, capacidade da sala cheia) para uma
+     * mesma dobradinha.
+     *
      * @return array{legacy: array<int, array{x: float, y: float}>, solver: array<int, array{x: float, y: float}>}
      */
     protected function buildScatterData(ComparisonReport $report): array
     {
         $classes = SchoolClass::whereBelongsTo($report->schoolTerm)
+            ->with('fusion')
             ->orderBy('id')
             ->get()
             ->keyBy('id');
@@ -88,7 +95,8 @@ class ComparisonReportController extends Controller
 
     /**
      * Mapeia um conjunto de alocacoes brutas em pontos (x=demanda, y=capacidade),
-     * descartando turmas sem demanda ou salas inexistentes.
+     * descartando unidades sem demanda ou salas inexistentes. Dobradinhas
+     * viram um único ponto com demanda somada.
      *
      * @param  array<int, int|null>|null  $allocations
      * @return array<int, array{x: float, y: float}>
@@ -101,29 +109,71 @@ class ComparisonReportController extends Controller
             return $points;
         }
 
-        foreach ($allocations as $classId => $roomId) {
-            if ($roomId === null) {
-                continue;
-            }
+        $solo = $classes->filter(fn ($c) => $c->fusion_id === null);
+        $fused = $classes->filter(fn ($c) => $c->fusion_id !== null)->groupBy('fusion_id');
 
-            $class = $classes->get((int) $classId);
-            $room = $rooms->get((int) $roomId);
-
-            if (! $class || ! $room) {
-                continue;
-            }
-
+        foreach ($solo as $class) {
             if (! $class->estmtr || $class->estmtr <= 0) {
                 continue;
             }
 
-            $points[] = [
-                'x' => (float) $class->estmtr,
-                'y' => (float) $room->assentos,
-            ];
+            $point = $this->scatterPointFor((int) $class->id, (float) $class->estmtr, $allocations, $rooms);
+            if ($point !== null) {
+                $points[] = $point;
+            }
+        }
+
+        foreach ($fused as $children) {
+            $fusion = $children->first()->fusion;
+            $masterId = $fusion && $fusion->master_id
+                ? (int) $fusion->master_id
+                : (int) $children->min('id');
+
+            $demand = 0.0;
+            foreach ($children as $child) {
+                if ($child->estmtr && $child->estmtr > 0) {
+                    $demand += (float) $child->estmtr;
+                }
+            }
+
+            if ($demand <= 0) {
+                continue;
+            }
+
+            $point = $this->scatterPointFor($masterId, $demand, $allocations, $rooms);
+            if ($point !== null) {
+                $points[] = $point;
+            }
         }
 
         return $points;
+    }
+
+    /**
+     * Resolve um ponto (demanda, capacidade) para uma unidade de alocação
+     * alocada, ou null quando não alocada / sala inexistente.
+     *
+     * @param  array<int, int|null>  $allocations
+     * @return array{x: float, y: float}|null
+     */
+    protected function scatterPointFor(int $classId, float $demand, array $allocations, Collection $rooms): ?array
+    {
+        $roomId = $allocations[$classId] ?? null;
+
+        if ($roomId === null) {
+            return null;
+        }
+
+        $room = $rooms->get((int) $roomId);
+
+        if (! $room) {
+            return null;
+        }
+
+        return [
+            'x' => $demand,
+            'y' => (float) $room->assentos,
+        ];
     }
 
     /**
