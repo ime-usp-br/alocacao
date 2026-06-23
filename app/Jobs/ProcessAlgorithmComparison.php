@@ -133,9 +133,12 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
 
         // 6. Avaliacao isomorfica do resultado legado via Evaluator (puro,
         //    sem escrita em DB). O mapa coletado ja esta em memoria, logo o
-        //    rollback do banco nao o afeta.
+        //    rollback do banco nao o afeta. As alocacoes manuais preservadas
+        //    do estado base sao excluidas da avaliacao, pois nao sao decisoes
+        //    da heuristica legada.
         $evaluator = new AllocationEvaluatorService($this->solverConfig);
-        $legacyMetrics = $evaluator->evaluate($term, $legacyAllocations, $solveTime);
+        $manualUnitIds = ComparisonAllocationCollector::manualUnitIds($term, $baseState->allocations ?? []);
+        $legacyMetrics = $evaluator->evaluate($term, $legacyAllocations, $solveTime, $manualUnitIds);
 
         // 7. Persiste as metricas e o mapa bruto do legado. O relatorio
         //    permanece em 'processing' ate que o solver seja avaliado

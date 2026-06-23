@@ -294,7 +294,8 @@
                         <div class="card-body">
                             <p class="text-muted small mb-2">
                                 Pontos <span style="color:#dc3545; font-weight:bold;">vermelhos</span> = Heurística Legada;
-                                <span style="color:#007bff; font-weight:bold;">azuis</span> = Solver CP-SAT.
+                                <span style="color:#007bff; font-weight:bold;">azuis</span> = Solver CP-SAT;
+                                <span style="color:#ffc107; font-weight:bold;">âmbar (◇)</span> = alocações manuais preservadas do estado base (não decididas pelos motores).
                                 A área sombreada representa a Zona de Conforto (margens de {{ $comfortZone['min_percent'] }}% a {{ $comfortZone['max_percent'] }}%).
                             </p>
                             <div style="position: relative; height: 500px;">
@@ -605,7 +606,7 @@
         const yMaxSlope = 1 / (1 - maxPct / 100);  // mais vazia (maior folga)
 
         let maxDemand = 0;
-        ['legacy', 'solver'].forEach(function (src) {
+        ['legacy', 'solver', 'manual'].forEach(function (src) {
             (scatterData[src] || []).forEach(function (p) {
                 if (p.x > maxDemand) maxDemand = p.x;
             });
@@ -694,6 +695,16 @@
                         pointRadius: 3,
                         pointHoverRadius: 6,
                         order: 0,
+                    },
+                    {
+                        label: 'Manual (preservada)',
+                        data: scatterData.manual || [],
+                        backgroundColor: 'rgba(255, 193, 7, 0.65)',
+                        borderColor: 'rgba(255, 193, 7, 1)',
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        pointStyle: 'rectRot',
+                        order: -1,
                     },
                 ],
             },

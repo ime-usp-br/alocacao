@@ -160,10 +160,17 @@ class ComparisonResultWebhookController extends Controller
 
         try {
             $evaluator = new AllocationEvaluatorService($report->solver_config ?? []);
+            // Alocações manuais preservadas do estado base não são decisões do
+            // solver e portanto são excluídas da avaliação de métricas.
+            $manualUnitIds = ComparisonAllocationCollector::manualUnitIds(
+                $report->schoolTerm,
+                $baseState->allocations ?? []
+            );
             $metrics = $evaluator->evaluate(
                 $report->schoolTerm,
                 $rawAllocations,
-                $solveTimeSeconds !== null ? (float) $solveTimeSeconds : null
+                $solveTimeSeconds !== null ? (float) $solveTimeSeconds : null,
+                $manualUnitIds
             );
 
             $report->update([

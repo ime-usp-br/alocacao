@@ -32,6 +32,10 @@ class AllocationEvaluatorService
      * @param SchoolTerm $schoolTerm Semestre letivo avaliado.
      * @param array<int, int|null> $allocations Mapa [school_class_id => room_id].
      * @param float|null $solveTimeSeconds Tempo de resolução (opcional).
+     * @param array<int> $excludeUnitIds Ids de unidades de alocação (id da
+     *        turma standalone ou master_id da fusão) a desconsiderar da
+     *        avaliação — tipicamente as alocações manuais preservadas do
+     *        estado base, que não são decisões do motor avaliado.
      * @return array{
      *     allocation_rate: float,
      *     comfort_zone_rate: float,
@@ -41,9 +45,9 @@ class AllocationEvaluatorService
      *     solve_time_seconds: float|null
      * }
      */
-    public function evaluate(SchoolTerm $schoolTerm, array $allocations, ?float $solveTimeSeconds = null): array
+    public function evaluate(SchoolTerm $schoolTerm, array $allocations, ?float $solveTimeSeconds = null, array $excludeUnitIds = []): array
     {
-        $breakdown = $this->breakdown($schoolTerm, $allocations);
+        $breakdown = $this->breakdown($schoolTerm, $allocations, $excludeUnitIds);
 
         $eligibleCount = count($breakdown);
 
@@ -111,6 +115,9 @@ class AllocationEvaluatorService
      * pareada (intersect por class_id) case legado e solver para a mesma
      * dobradinha.
      *
+     * @param array<int, int|null> $allocations Mapa [class_id => room_id].
+     * @param array<int> $excludeUnitIds Ids de unidades a desconsiderar
+     *        (alocações manuais preservadas do estado base). Defaults to [].
      * @return array<int, array{
      *     class_id: int,
      *     allocated: bool,
@@ -125,7 +132,7 @@ class AllocationEvaluatorService
      *     room_id: int|null,
      * }>
      */
-    public function breakdown(SchoolTerm $schoolTerm, array $allocations): array
+    public function breakdown(SchoolTerm $schoolTerm, array $allocations, array $excludeUnitIds = []): array
     {
         $classes = $this->loadClasses($schoolTerm);
         $rooms = $this->loadRooms($allocations);
@@ -133,6 +140,11 @@ class AllocationEvaluatorService
 
         $epsilon = 1e-9;
         $result = [];
+
+        $excludeSet = [];
+        foreach ($excludeUnitIds as $id) {
+            $excludeSet[(int) $id] = true;
+        }
 
         $nonExternal = $classes->filter(fn (SchoolClass $class) => ! $class->externa);
 
@@ -145,6 +157,10 @@ class AllocationEvaluatorService
                 continue;
             }
 
+            if (isset($excludeSet[(int) $class->id])) {
+                continue;
+            }
+
             $result[] = $this->buildRecord($class, (float) $class->estmtr, $allocations, $rooms, $epsilon, null, $this->expectedBlock($class), $minCapacities);
         }
 
@@ -153,6 +169,10 @@ class AllocationEvaluatorService
             $masterId = $fusion && $fusion->master_id
                 ? (int) $fusion->master_id
                 : (int) $children->min('id');
+
+            if (isset($excludeSet[$masterId])) {
+                continue;
+            }
 
             $demand = 0.0;
             foreach ($children as $child) {

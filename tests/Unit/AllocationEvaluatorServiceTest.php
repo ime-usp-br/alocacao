@@ -490,6 +490,104 @@ class AllocationEvaluatorServiceTest extends TestCase
     }
 
     /** @test */
+    public function breakdown_excludes_manual_unit_ids_from_evaluation()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
+
+        // Turma "manual" (preservada do estado base) — não é decisão do motor.
+        $manual = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
+        ]);
+
+        // Turma automática decidida pelo motor.
+        $auto = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $metrics = $service->evaluate(
+            $term,
+            [$manual->id => $room->id, $auto->id => $room->id],
+            null,
+            [$manual->id]
+        );
+
+        // Apenas a turma automática conta: 1 elegível, 1 alocada => 100%.
+        $this->assertEquals(100.0, $metrics['allocation_rate']);
+
+        $bd = $service->breakdown(
+            $term,
+            [$manual->id => $room->id, $auto->id => $room->id],
+            [$manual->id]
+        );
+
+        $ids = array_column($bd, 'class_id');
+        $this->assertNotContains($manual->id, $ids);
+        $this->assertContains($auto->id, $ids);
+    }
+
+    /** @test */
+    public function breakdown_excludes_manual_fusion_unit_by_master_id()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $master = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $child = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 50,
+            'externa' => false,
+        ]);
+
+        $fusion = \App\Models\Fusion::factory()->withMaster($master)->create();
+        $master->fusion()->associate($fusion)->save();
+        $child->fusion()->associate($fusion)->save();
+
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown(
+            $term,
+            [$master->id => $room->id],
+            [$master->id]
+        );
+
+        // A dobradinha manual é excluída inteiramente (keyed por master_id).
+        $this->assertCount(0, $bd);
+    }
+
+    /** @test */
+    public function breakdown_keeps_unallocated_unit_when_manual_is_excluded()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
+
+        $manual = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
+        ]);
+        $unassigned = SchoolClass::factory()->withSchoolTerm($term)->create([
+            'estmtr' => 80,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $metrics = $service->evaluate(
+            $term,
+            [$manual->id => $room->id, $unassigned->id => null],
+            null,
+            [$manual->id]
+        );
+
+        // Só a turma não-alocada conta no denominador => 0%.
+        $this->assertEquals(0.0, $metrics['allocation_rate']);
+    }
+
+    /** @test */
     public function min_capacities_by_block_returns_min_per_block()
     {
         Room::factory()->create(['nome' => 'A101', 'assentos' => 80]);

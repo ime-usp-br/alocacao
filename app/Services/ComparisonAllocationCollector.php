@@ -107,4 +107,64 @@ class ComparisonAllocationCollector
 
         return $class->room_id;
     }
+
+    /**
+     * Computa os ids das unidades de alocação (id da turma standalone ou
+     * master_id da fusão) que já possuíam sala no estado base — ou seja, as
+     * alocações manuais (travas) preservadas por ambos os motores e que não
+     * são atribuíveis às decisões de nenhum deles.
+     *
+     * O mapeamento espelha o agrupamento de `AllocationEvaluatorService::breakdown`
+     * (solo por id; fusões por master_id) para que o conjunto possa ser usado
+     * como `$excludeUnitIds` na avaliação.
+     *
+     * @param array<int, int|null> $baseAllocations Mapa [class_id => room_id]
+     *        capturado no estado base antes da execução dos motores.
+     * @return array<int, int>
+     */
+    public static function manualUnitIds(SchoolTerm $schoolTerm, array $baseAllocations): array
+    {
+        if (empty($baseAllocations)) {
+            return [];
+        }
+
+        $classes = SchoolClass::whereBelongsTo($schoolTerm)
+            ->with('fusion')
+            ->orderBy('id')
+            ->get()
+            ->keyBy('id');
+
+        $manual = [];
+
+        $solo = $classes->filter(fn ($c) => $c->fusion_id === null);
+        foreach ($solo as $class) {
+            if (($baseAllocations[$class->id] ?? null) !== null) {
+                $manual[] = (int) $class->id;
+            }
+        }
+
+        $fused = $classes->filter(fn ($c) => $c->fusion_id !== null)->groupBy('fusion_id');
+        foreach ($fused as $children) {
+            $fusion = $children->first()->fusion;
+            $masterId = $fusion && $fusion->master_id
+                ? (int) $fusion->master_id
+                : (int) $children->min('id');
+
+            $isManual = ($baseAllocations[$masterId] ?? null) !== null;
+            if (! $isManual) {
+                foreach ($children as $child) {
+                    if (($baseAllocations[$child->id] ?? null) !== null) {
+                        $isManual = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($isManual) {
+                $manual[] = $masterId;
+            }
+        }
+
+        return $manual;
+    }
 }

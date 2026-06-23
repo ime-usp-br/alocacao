@@ -214,4 +214,72 @@ class ComparisonReportControllerTest extends TestCase
         $response->assertViewHas('summaryByTerm');
         $response->assertSee('Resumo por Semestre');
     }
+
+    /** @test */
+    public function show_scatter_partitions_manual_allocations_into_their_own_dataset()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $manualRoom = Room::factory()->create(['nome' => 'A200', 'assentos' => 200]);
+        $autoRoomLegacy = Room::factory()->create(['nome' => 'A' . rand(100, 999), 'assentos' => 150]);
+        $autoRoomSolver = Room::factory()->create(['nome' => 'A' . rand(100, 999), 'assentos' => 110]);
+
+        $manualClass = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 100, 'tiptur' => 'Graduação']);
+
+        $autoClass = SchoolClass::factory()
+            ->withSchoolTerm($term)
+            ->withoutRoom()
+            ->create(['estmtr' => 100, 'tiptur' => 'Graduação']);
+
+        $baseState = AllocationState::create([
+            'school_term_id' => $term->id,
+            'name' => 'Base de Benchmarking',
+            'allocations' => [
+                $manualClass->id => $manualRoom->id,
+                $autoClass->id => null,
+            ],
+            'solver_log_id' => null,
+        ]);
+
+        ComparisonReport::create([
+            'school_term_id' => $term->id,
+            'base_allocation_state_id' => $baseState->id,
+            'status' => 'completed',
+            'legacy_metrics' => [
+                'allocation_rate' => 100.0, 'comfort_zone_rate' => 100.0,
+                'avg_waste_per_class' => 0.0, 'avg_claustrophobia_per_class' => 0.0,
+                'block_adherence_rate' => 100.0, 'solve_time_seconds' => 1.0,
+            ],
+            'solver_metrics' => [
+                'allocation_rate' => 100.0, 'comfort_zone_rate' => 100.0,
+                'avg_waste_per_class' => 0.0, 'avg_claustrophobia_per_class' => 0.0,
+                'block_adherence_rate' => 100.0, 'solve_time_seconds' => 1.0,
+            ],
+            // Turma manual preservada em ambos os motores (mesma sala).
+            'legacy_raw_allocations' => [$manualClass->id => $manualRoom->id, $autoClass->id => $autoRoomLegacy->id],
+            'solver_raw_allocations' => [$manualClass->id => $manualRoom->id, $autoClass->id => $autoRoomSolver->id],
+        ]);
+
+        $report = ComparisonReport::latest('id')->first();
+
+        $response = $this->actingAsAdmin()->get("/comparison-reports/{$report->id}");
+
+        $response->assertOk();
+
+        $scatter = $response->viewData('scatterData');
+
+        // Dataset manual: um único ponto (demanda 100, capacidade 200).
+        $this->assertCount(1, $scatter['manual']);
+        $this->assertEquals(100.0, $scatter['manual'][0]['x']);
+        $this->assertEquals(200.0, $scatter['manual'][0]['y']);
+
+        // Datasets auto contêm apenas a turma automática (capacidades 150/110).
+        $this->assertCount(1, $scatter['legacy']);
+        $this->assertEquals(150.0, $scatter['legacy'][0]['y']);
+        $this->assertCount(1, $scatter['solver']);
+        $this->assertEquals(110.0, $scatter['solver'][0]['y']);
+    }
 }

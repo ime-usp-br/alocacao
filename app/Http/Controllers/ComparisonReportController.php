@@ -6,6 +6,7 @@ use App\Models\ComparisonReport;
 use App\Models\Room;
 use App\Models\SchoolClass;
 use App\Services\AllocationEvaluatorService;
+use App\Services\ComparisonAllocationCollector;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -68,7 +69,12 @@ class ComparisonReportController extends Controller
      * empilhados em (demanda individual, capacidade da sala cheia) para uma
      * mesma dobradinha.
      *
-     * @return array{legacy: array<int, array{x: float, y: float}>, solver: array<int, array{x: float, y: float}>}
+     * As alocações manuais (preservadas do estado base) são destacadas em um
+     * dataset próprio (`manual`) — idênticas em ambos os motores, são exibidas
+     * uma única vez em cor distinta. Os datasets `legacy`/`solver` contêm
+     * apenas as alocações automáticas decididas por cada motor.
+     *
+     * @return array{legacy: array<int, array{x: float, y: float}>, solver: array<int, array{x: float, y: float}>, manual: array<int, array{x: float, y: float}>}
      */
     protected function buildScatterData(ComparisonReport $report): array
     {
@@ -89,9 +95,23 @@ class ComparisonReportController extends Controller
 
         $rooms = empty($roomIds) ? collect() : Room::whereIn('id', $roomIds)->get()->keyBy('id');
 
+        $manualUnitIds = $this->manualUnitIds($report);
+
+        $legacyPoints = $this->scatterPoints($report->legacy_raw_allocations, $classes, $rooms, $manualUnitIds);
+        $solverPoints = $this->scatterPoints($report->solver_raw_allocations, $classes, $rooms, $manualUnitIds);
+
+        // As alocações manuais são idênticas em ambos os motores (preservadas
+        // do estado base); exibe-se uma única vez. Prefere-se o conjunto do
+        // legado (sempre executado primeiro); se vazio, recorre-se ao solver.
+        $manual = $legacyPoints['manual'];
+        if (empty($manual)) {
+            $manual = $solverPoints['manual'];
+        }
+
         return [
-            'legacy' => $this->scatterPoints($report->legacy_raw_allocations, $classes, $rooms),
-            'solver' => $this->scatterPoints($report->solver_raw_allocations, $classes, $rooms),
+            'legacy' => $legacyPoints['auto'],
+            'solver' => $solverPoints['auto'],
+            'manual' => $manual,
         ];
     }
 
@@ -100,15 +120,25 @@ class ComparisonReportController extends Controller
      * descartando unidades sem demanda ou salas inexistentes. Dobradinhas
      * viram um único ponto com demanda somada.
      *
+     * Os pontos são particionados em `auto` (decididos pelo motor) e `manual`
+     * (preservados do estado base), conforme `$manualUnitIds`.
+     *
      * @param  array<int, int|null>|null  $allocations
-     * @return array<int, array{x: float, y: float}>
+     * @param  array<int>  $manualUnitIds
+     * @return array{auto: array<int, array{x: float, y: float}>, manual: array<int, array{x: float, y: float}>}
      */
-    protected function scatterPoints(?array $allocations, Collection $classes, Collection $rooms): array
+    protected function scatterPoints(?array $allocations, Collection $classes, Collection $rooms, array $manualUnitIds = []): array
     {
-        $points = [];
+        $auto = [];
+        $manual = [];
 
         if (empty($allocations)) {
-            return $points;
+            return ['auto' => $auto, 'manual' => $manual];
+        }
+
+        $manualSet = [];
+        foreach ($manualUnitIds as $id) {
+            $manualSet[(int) $id] = true;
         }
 
         $solo = $classes->filter(fn ($c) => $c->fusion_id === null);
@@ -121,7 +151,11 @@ class ComparisonReportController extends Controller
 
             $point = $this->scatterPointFor((int) $class->id, (float) $class->estmtr, $allocations, $rooms);
             if ($point !== null) {
-                $points[] = $point;
+                if (isset($manualSet[(int) $class->id])) {
+                    $manual[] = $point;
+                } else {
+                    $auto[] = $point;
+                }
             }
         }
 
@@ -144,11 +178,32 @@ class ComparisonReportController extends Controller
 
             $point = $this->scatterPointFor($masterId, $demand, $allocations, $rooms);
             if ($point !== null) {
-                $points[] = $point;
+                if (isset($manualSet[$masterId])) {
+                    $manual[] = $point;
+                } else {
+                    $auto[] = $point;
+                }
             }
         }
 
-        return $points;
+        return ['auto' => $auto, 'manual' => $manual];
+    }
+
+    /**
+     * Resolve o conjunto de ids de unidades de alocação manuais (travas
+     * preservadas do estado base) para o relatório.
+     *
+     * @return array<int, int>
+     */
+    protected function manualUnitIds(ComparisonReport $report): array
+    {
+        $baseState = $report->baseAllocationState;
+
+        if (! $baseState || empty($baseState->allocations)) {
+            return [];
+        }
+
+        return ComparisonAllocationCollector::manualUnitIds($report->schoolTerm, $baseState->allocations);
     }
 
     /**
@@ -188,9 +243,11 @@ class ComparisonReportController extends Controller
             return [];
         }
 
+        $manualUnitIds = $this->manualUnitIds($report);
+
         $evaluator = new AllocationEvaluatorService($report->solver_config ?? []);
-        $legacyBreakdown = $evaluator->breakdown($report->schoolTerm, $report->legacy_raw_allocations ?? []);
-        $solverBreakdown = $evaluator->breakdown($report->schoolTerm, $report->solver_raw_allocations ?? []);
+        $legacyBreakdown = $evaluator->breakdown($report->schoolTerm, $report->legacy_raw_allocations ?? [], $manualUnitIds);
+        $solverBreakdown = $evaluator->breakdown($report->schoolTerm, $report->solver_raw_allocations ?? [], $manualUnitIds);
 
         $legacyById = collect($legacyBreakdown)->keyBy('class_id');
         $solverById = collect($solverBreakdown)->keyBy('class_id');
