@@ -46,14 +46,16 @@ class ComparisonReportController extends Controller
 
         $scatterData = $this->buildScatterData($report);
 
+        $solverConfig = $report->solver_config ?? [];
+
         $comfortZone = [
-            'min_percent' => (float) config('alocacao.room_allocation.comfort_zone_min_percent', 10.0),
-            'max_percent' => (float) config('alocacao.room_allocation.comfort_zone_max_percent', 25.0),
+            'min_percent' => (float) ($solverConfig['comfort_zone_min_percent'] ?? config('alocacao.room_allocation.comfort_zone_min_percent', 10.0)),
+            'max_percent' => (float) ($solverConfig['comfort_zone_max_percent'] ?? config('alocacao.room_allocation.comfort_zone_max_percent', 25.0)),
         ];
 
         $analytics = $this->buildAnalytics($report);
 
-        return view('comparisonreports.show', compact('report', 'scatterData', 'comfortZone', 'analytics'));
+        return view('comparisonreports.show', compact('report', 'scatterData', 'comfortZone', 'analytics', 'solverConfig'));
     }
 
     /**
@@ -186,7 +188,7 @@ class ComparisonReportController extends Controller
             return [];
         }
 
-        $evaluator = new AllocationEvaluatorService();
+        $evaluator = new AllocationEvaluatorService($report->solver_config ?? []);
         $legacyBreakdown = $evaluator->breakdown($report->schoolTerm, $report->legacy_raw_allocations ?? []);
         $solverBreakdown = $evaluator->breakdown($report->schoolTerm, $report->solver_raw_allocations ?? []);
 

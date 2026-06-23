@@ -62,6 +62,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         $report = ComparisonReport::create([
             'school_term_id' => $term->id,
             'base_allocation_state_id' => $baseState->id,
+            'solver_config' => $this->solverConfig,
             'status' => 'processing',
         ]);
         $this->comparisonReportId = $report->id;
@@ -133,7 +134,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         // 6. Avaliacao isomorfica do resultado legado via Evaluator (puro,
         //    sem escrita em DB). O mapa coletado ja esta em memoria, logo o
         //    rollback do banco nao o afeta.
-        $evaluator = new AllocationEvaluatorService();
+        $evaluator = new AllocationEvaluatorService($this->solverConfig);
         $legacyMetrics = $evaluator->evaluate($term, $legacyAllocations, $solveTime);
 
         // 7. Persiste as metricas e o mapa bruto do legado. O relatorio

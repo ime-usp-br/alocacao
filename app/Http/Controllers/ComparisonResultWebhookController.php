@@ -159,7 +159,7 @@ class ComparisonResultWebhookController extends Controller
         }
 
         try {
-            $evaluator = new AllocationEvaluatorService();
+            $evaluator = new AllocationEvaluatorService($report->solver_config ?? []);
             $metrics = $evaluator->evaluate(
                 $report->schoolTerm,
                 $rawAllocations,

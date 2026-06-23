@@ -42,9 +42,9 @@
     // Textos explicativos exibidos em tooltips nativas do Bootstrap 4.
     $kpiTooltips = [
         'allocation_rate'              => 'Percentual de turmas que o algoritmo conseguiu alocar em alguma sala.',
-        'comfort_zone_rate'            => 'Percentual de turmas alocadas em salas que possuem a margem ideal de assentos livres (entre 10% e 25% a mais que a demanda).',
-        'avg_waste_per_class'          => 'Média de assentos vazios que excedem o limite máximo de 25% de folga nas turmas alocadas. Quanto menor, melhor.',
-        'avg_claustrophobia_per_class' => 'Média de assentos faltantes para atingir a margem de segurança de 10% de folga nas turmas alocadas. Quanto menor, melhor.',
+        'comfort_zone_rate'            => 'Percentual de turmas alocadas em salas que possuem a margem ideal de assentos livres (entre ' . $comfortZone['min_percent'] . '% e ' . $comfortZone['max_percent'] . '% de folga em relação à capacidade).',
+        'avg_waste_per_class'          => 'Média de assentos vazios que excedem o limite máximo de ' . $comfortZone['max_percent'] . '% de folga nas turmas alocadas. Quanto menor, melhor.',
+        'avg_claustrophobia_per_class' => 'Média de assentos faltantes para atingir a margem de segurança de ' . $comfortZone['min_percent'] . '% de folga nas turmas alocadas. Quanto menor, melhor.',
         'block_adherence_rate'         => 'Percentual de turmas que respeitaram o bloco de preferência: pós-graduação no Bloco A e graduação no Bloco B. Dobradadinhas mistas (grad + pós) não são avaliadas.',
         'solve_time_seconds'           => 'Tempo total em segundos gasto pelo algoritmo para encontrar a solução. Quanto menor, melhor.',
     ];
@@ -114,6 +114,82 @@
                     </div>
                 </div>
             </div>
+
+            @if (!empty($solverConfig))
+                <div class="card mb-4">
+                    <div class="card-header bg-light py-2">
+                        <strong class="small text-uppercase text-muted">Configurações do Solver CP‑SAT</strong>
+                    </div>
+                    <div class="card-body py-3">
+                        <div class="row">
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Capacidade estrita</span>
+                                <div class="font-weight-bold small">{{ !empty($solverConfig['strict_capacity']) ? 'Sim' : 'Não' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Bloquear B para pós</span>
+                                <div class="font-weight-bold small">{{ !empty($solverConfig['block_b_restriction_for_pos']) ? 'Sim' : 'Não' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Bloquear A para calouros</span>
+                                <div class="font-weight-bold small">{{ !empty($solverConfig['block_a_restriction_for_freshmen']) ? 'Sim' : 'Não' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Zona de conforto</span>
+                                <div class="font-weight-bold small">{{ $comfortZone['min_percent'] }}% – {{ $comfortZone['max_percent'] }}%</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade undergrad em A</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['undergrad_in_block_a_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade pós em B</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['pos_in_block_b_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade desperdício</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['waste_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade claustrofobia</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['claustrophobia_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade split turma</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['split_class_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade split cohort</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['split_cohort_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Penalidade não alocada</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['unassigned_penalty'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Peso de prioridade</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['priority_weight'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Estimativa histórica</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['historical_estimation_method'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Threshold histórico (%)</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['historical_threshold_percent'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Lookback (anos)</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['historical_lookback_years'] ?? '-' }}</div>
+                            </div>
+                            <div class="col-md-3 col-6 mb-2">
+                                <span class="text-muted small">Mín. anos históricos</span>
+                                <div class="font-weight-bold small">{{ $solverConfig['historical_min_years'] ?? '-' }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
 
             @if (!$isCompleted)
                 <div class="alert alert-info">
@@ -225,6 +301,62 @@
                                 <canvas id="scatterChart"></canvas>
                             </div>
                         </div>
+                    </div>
+
+                    {{-- ============================ --}}
+                    {{-- Matriz de Contingência Bloco --}}
+                    {{-- ============================ --}}
+                    <h3 class="mb-3">Matriz de Contingência de Bloco</h3>
+                    <p class="text-muted small mb-3">
+                        Linhas = bloco de preferência (pós-graduação → A; graduação → B).
+                        Colunas = bloco real da sala alocada.
+                        Dobradinhas mistas (grad + pós) não aparecem.
+                        Células coloridas pela frequência relativa.
+                    </p>
+                    <div class="row mb-5">
+                        @foreach (['legacy' => 'Legado', 'solver' => 'Solver CP-SAT'] as $engKey => $engLabel)
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="text-muted text-uppercase small fw-bold mb-3">{{ $engLabel }}</h6>
+                                        <table class="table table-sm table-bordered text-center" style="font-size:13px;">
+                                            <thead class="thead-light">
+                                                <tr>
+                                                    <th>Esperado \ Real</th>
+                                                    @foreach ($analytics['block_contingency']['categories'] as $cat)
+                                                        <th>{{ $cat }}</th>
+                                                    @endforeach
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @php $matrix = $analytics['block_contingency'][$engKey] ?? []; $maxVal = 0; @endphp
+                                                @foreach ($matrix as $row)
+                                                    @foreach ($row as $v)
+                                                        @php if ($v > $maxVal) $maxVal = $v; @endphp
+                                                    @endforeach
+                                                @endforeach
+                                                @foreach ($matrix as $exp => $row)
+                                                    <tr>
+                                                        <td class="font-weight-bold">{{ $exp }}</td>
+                                                        @foreach ($row as $act => $v)
+                                                            @php
+                                                                $intensity = $maxVal > 0 ? ($v / $maxVal) : 0;
+                                                                $red = 255;
+                                                                $green = (int) round(255 * (1 - $intensity));
+                                                                $blue = (int) round(255 * (1 - $intensity));
+                                                                $color = "rgb({$red},{$green},{$blue})";
+                                                                $textColor = $intensity > 0.5 ? '#fff' : '#212529';
+                                                            @endphp
+                                                            <td style="background-color: {{ $color }}; color: {{ $textColor }};">{{ $v }}</td>
+                                                        @endforeach
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
                     </div>
 
                     {{-- ============================ --}}
@@ -380,125 +512,6 @@
                         </div>
                     </div>
 
-                    {{-- ============================ --}}
-                    {{-- Matriz de Contingência Bloco --}}
-                    {{-- ============================ --}}
-                    <h3 class="mb-3">Matriz de Contingência de Bloco</h3>
-                    <p class="text-muted small mb-3">
-                        Linhas = bloco de preferência (pós-graduação → A; graduação → B).
-                        Colunas = bloco real da sala alocada.
-                        Dobradinhas mistas (grad + pós) não aparecem.
-                        Células coloridas pela frequência relativa.
-                    </p>
-                    <div class="row mb-5">
-                        @foreach (['legacy' => 'Legado', 'solver' => 'Solver CP-SAT'] as $engKey => $engLabel)
-                            <div class="col-md-6 mb-3">
-                                <div class="card h-100">
-                                    <div class="card-body">
-                                        <h6 class="text-muted text-uppercase small fw-bold mb-3">{{ $engLabel }}</h6>
-                                        <table class="table table-sm table-bordered text-center" style="font-size:13px;">
-                                            <thead class="thead-light">
-                                                <tr>
-                                                    <th>Esperado \ Real</th>
-                                                    @foreach ($analytics['block_contingency']['categories'] as $cat)
-                                                        <th>{{ $cat }}</th>
-                                                    @endforeach
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @php $matrix = $analytics['block_contingency'][$engKey] ?? []; $maxVal = 0; @endphp
-                                                @foreach ($matrix as $row)
-                                                    @foreach ($row as $v)
-                                                        @php if ($v > $maxVal) $maxVal = $v; @endphp
-                                                    @endforeach
-                                                @endforeach
-                                                @foreach ($matrix as $exp => $row)
-                                                    <tr>
-                                                        <td class="font-weight-bold">{{ $exp }}</td>
-                                                        @foreach ($row as $act => $v)
-                                                            @php
-                                                                $intensity = $maxVal > 0 ? ($v / $maxVal) : 0;
-                                                                $red = 255;
-                                                                $green = (int) round(255 * (1 - $intensity));
-                                                                $blue = (int) round(255 * (1 - $intensity));
-                                                                $color = "rgb({$red},{$green},{$blue})";
-                                                                $textColor = $intensity > 0.5 ? '#fff' : '#212529';
-                                                            @endphp
-                                                            <td style="background-color: {{ $color }}; color: {{ $textColor }};">{{ $v }}</td>
-                                                        @endforeach
-                                                    </tr>
-                                                @endforeach
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-
-                    {{-- ============================ --}}
-                    {{-- Concordância / Transição   --}}
-                    {{-- ============================ --}}
-                    <h3 class="mb-3">Concordância e Transições de Sala</h3>
-                    <div class="row mb-4">
-                        <div class="col-md-4 mb-3">
-                            <div class="card text-center h-100 border-success">
-                                <div class="card-body">
-                                    <div class="text-muted small text-uppercase fw-semibold mb-2">Mesma Sala</div>
-                                    <div class="fs-4 fw-bold">{{ $analytics['paired']['same_room'] ?? 0 }}</div>
-                                    <div class="small text-muted">{{ $fmt($analytics['paired']['agreement_rate'] ?? null, 1) }}% de concordância</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="card text-center h-100 border-warning">
-                                <div class="card-body">
-                                    <div class="text-muted small text-uppercase fw-semibold mb-2">Sala Trocada</div>
-                                    <div class="fs-4 fw-bold">{{ $analytics['paired']['changed_room'] ?? 0 }}</div>
-                                    <div class="small text-muted">turmas com room_id diferente</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="card text-center h-100 border-info">
-                                <div class="card-body">
-                                    <div class="text-muted small text-uppercase fw-semibold mb-2">Pares Alocadas</div>
-                                    <div class="fs-4 fw-bold">{{ $analytics['paired']['n_pairs'] ?? 0 }}</div>
-                                    <div class="small text-muted">turmas alocadas por ambos</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card mb-5">
-                        <div class="card-body">
-                            <h6 class="text-muted text-uppercase small fw-bold mb-3">Distribuição da Variação de Capacidade (Solver − Legado) nas Turmas que Trocaram de Sala</h6>
-                            <div style="position: relative; height: 320px;">
-                                <canvas id="capacityDeltaChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-
-                    @if (!empty($analytics['agreement']['block_transitions']))
-                        <div class="card mb-5">
-                            <div class="card-body table-responsive">
-                                <h6 class="text-muted text-uppercase small fw-bold mb-3">Transições de Bloco (Legado → Solver)</h6>
-                                <table class="table table-sm table-bordered text-center" style="font-size:13px;">
-                                    <thead class="thead-light">
-                                        <tr><th>Transição</th><th>Contagem</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach ($analytics['agreement']['block_transitions'] as $trans => $cnt)
-                                            <tr>
-                                                <td class="text-left">{{ $trans }}</td>
-                                                <td>{{ $cnt }}</td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    @endif
                 @endif
             @else
                 <p class="text-center text-muted">Ainda não há métricas disponíveis para este relatório.</p>
@@ -665,10 +678,13 @@
         });
 
         // ----- Scatter Plot (melhorado) -----
+        // A zona de conforto representa folga (assentos livres) em relação
+        // à capacidade.  min_percent = folga mínima, max_percent = folga máxima.
+        // Folga = (capacidade - demanda) / capacidade  =>  capacidade = demanda / (1 - folga)
         const minPct = comfortZone.min_percent;
         const maxPct = comfortZone.max_percent;
-        const yMinSlope = 1 + minPct / 100;
-        const yMaxSlope = 1 + maxPct / 100;
+        const yMinSlope = 1 / (1 - minPct / 100);  // mais cheia (menor folga)
+        const yMaxSlope = 1 / (1 - maxPct / 100);  // mais vazia (maior folga)
 
         let maxDemand = 0;
         ['legacy', 'solver'].forEach(function (src) {
@@ -921,30 +937,6 @@
         renderDiffBar('diffWasteChart', analytics.histograms.diff_waste, 'Diff Desperdício', 'rgba(220, 53, 69, 0.5)');
         renderDiffBar('diffClaustrophobiaChart', analytics.histograms.diff_claustrophobia, 'Diff Claustrofobia', 'rgba(0, 123, 255, 0.5)');
 
-        // ----- Capacity Delta Chart -----
-        const capDelta = analytics.agreement.capacity_delta_bins || { labels: [], solver: [] };
-        new Chart(document.getElementById('capacityDeltaChart'), {
-            type: 'bar',
-            data: {
-                labels: capDelta.labels,
-                datasets: [{
-                    label: 'Turmas que trocaram de sala',
-                    data: capDelta.solver,
-                    backgroundColor: 'rgba(255, 193, 7, 0.6)',
-                    borderColor: 'rgba(255, 193, 7, 1)',
-                    borderWidth: 1,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y',
-                scales: {
-                    x: { title: { display: true, text: 'Contagem' }, beginAtZero: true },
-                },
-                plugins: { legend: { display: false } },
-            },
-        });
     }
 })();
 </script>

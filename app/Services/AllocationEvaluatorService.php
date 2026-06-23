@@ -12,9 +12,11 @@ class AllocationEvaluatorService
     private float $comfortZoneMinPercent;
     private float $comfortZoneMaxPercent;
 
-    public function __construct()
+    public function __construct(array $config = [])
     {
-        $config = config('alocacao.room_allocation', []);
+        if (empty($config)) {
+            $config = config('alocacao.room_allocation', []);
+        }
 
         $this->comfortZoneMinPercent = (float) ($config['comfort_zone_min_percent'] ?? 10.0);
         $this->comfortZoneMaxPercent = (float) ($config['comfort_zone_max_percent'] ?? 25.0);
@@ -207,10 +209,17 @@ class AllocationEvaluatorService
             $capacity = (float) $room->assentos;
             $occupancyRatio = $capacity > 0 ? ($demand / $capacity) : null;
 
-            $minMargin = $demand * ($this->comfortZoneMinPercent / 100.0);
-            $maxMargin = $demand * ($this->comfortZoneMaxPercent / 100.0);
-            $minComfortCapacity = $demand + $minMargin;
-            $maxComfortCapacity = $demand + $maxMargin;
+            // A zona de conforto representa a faixa de FOLGA (assentos livres)
+            // em relação à capacidade da sala.
+            // min_percent = folga mínima exigida (ex: 10% livres = 90% ocupação)
+            // max_percent = folga máxima permitida (ex: 50% livres = 50% ocupação)
+            $minFolga = $this->comfortZoneMinPercent / 100.0;
+            $maxFolga = $this->comfortZoneMaxPercent / 100.0;
+
+            // Capacidade no limite de folga mínima (mais cheia permitida)
+            $minComfortCapacity = $demand / (1.0 - $minFolga);
+            // Capacidade no limite de folga máxima (mais vazia permitida)
+            $maxComfortCapacity = $demand / (1.0 - $maxFolga);
 
             if ($capacity >= $minComfortCapacity - $epsilon && $capacity <= $maxComfortCapacity + $epsilon) {
                 $inComfortZone = true;

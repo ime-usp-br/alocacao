@@ -47,8 +47,9 @@ class AllocationEvaluatorServiceTest extends TestCase
         $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
 
         // demand = 80, capacity = 100
-        // comfort zone 10%-25% => 88-100
-        // capacity = 100 is exactly at maxComfortCapacity (80*1.25=100) => inside comfort zone
+        // comfort zone 10%-25% (folga em relação à capacidade):
+        // minComfort = 80 / 0.90 = 88.89, maxComfort = 80 / 0.75 = 106.67
+        // capacity = 100 is inside comfort zone
         $class = SchoolClass::factory()->withSchoolTerm($term)->create([
             'estmtr' => 80,
             'externa' => false,
@@ -94,12 +95,12 @@ class AllocationEvaluatorServiceTest extends TestCase
         $rWaste = collect($bd)->firstWhere('class_id', $classWaste->id);
         $rClaus = collect($bd)->firstWhere('class_id', $classClaus->id);
 
-        // demand 80, max comfort = 100, capacity 150 => waste 50
-        $this->assertEquals(50.0, $rWaste['waste']);
+        // demand 80, max comfort = 80/0.75 = 106.67, capacity 150 => waste 43.33
+        $this->assertEqualsWithDelta(43.33, $rWaste['waste'], 0.01);
         $this->assertFalse($rWaste['in_comfort_zone']);
 
-        // demand 100, min comfort = 110, capacity 80 => claustrophobia 30
-        $this->assertEquals(30.0, $rClaus['claustrophobia']);
+        // demand 100, min comfort = 100/0.90 = 111.11, capacity 80 => claustrophobia 31.11
+        $this->assertEqualsWithDelta(31.11, $rClaus['claustrophobia'], 0.01);
         $this->assertFalse($rClaus['in_comfort_zone']);
     }
 
@@ -219,10 +220,10 @@ class AllocationEvaluatorServiceTest extends TestCase
         $service = new AllocationEvaluatorService();
         $metrics = $service->evaluate($term, [$class->id => $room->id], 5.0);
 
-        // capacity 120, demand 100, min comfort 110, max comfort 125
-        // capacity 120 > max comfort 125? No, 120 <= 125 => inside comfort zone
-        // waste = 0 (120 <= 125)
-        // claustrophobia = 0 (120 >= 110)
+        // capacity 120, demand 100, min comfort = 100/0.90 = 111.11, max comfort = 100/0.75 = 133.33
+        // capacity 120 <= max comfort 133.33 => inside comfort zone
+        // waste = 0 (120 <= 133.33)
+        // claustrophobia = 0 (120 >= 111.11)
         $this->assertEquals(100.0, $metrics['allocation_rate']);
         $this->assertEquals(100.0, $metrics['comfort_zone_rate']);
         $this->assertEquals(0.0, $metrics['avg_waste_per_class']);
@@ -274,8 +275,8 @@ class AllocationEvaluatorServiceTest extends TestCase
         $childA->fusion()->associate($fusion)->save();
         $childB->fusion()->associate($fusion)->save();
 
-        // Sala dimensionada para a demanda somada (80): min comfort = 88,
-        // max comfort = 100. Capacidade 100 => zona de conforto, sem waste.
+        // Sala dimensionada para a demanda somada (80): min comfort = 80/0.90 = 88.89,
+        // max comfort = 80/0.75 = 106.67. Capacidade 100 => zona de conforto, sem waste.
         $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
 
         $service = new AllocationEvaluatorService();
@@ -313,7 +314,7 @@ class AllocationEvaluatorServiceTest extends TestCase
         $master->fusion()->associate($fusion)->save();
         $child->fusion()->associate($fusion)->save();
 
-        // Sala na zona de conforto para demanda somada 80 (88..100).
+        // Sala na zona de conforto para demanda somada 80 (88.89..106.67).
         $room = Room::factory()->create(['nome' => 'A101', 'assentos' => 100]);
 
         $service = new AllocationEvaluatorService();

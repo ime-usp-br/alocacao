@@ -12,6 +12,7 @@ class ComparisonReport extends Model
     protected $fillable = [
         'school_term_id',
         'base_allocation_state_id',
+        'solver_config',
         'status',
         'legacy_metrics',
         'solver_metrics',
@@ -20,6 +21,7 @@ class ComparisonReport extends Model
     ];
 
     protected $casts = [
+        'solver_config' => 'array',
         'legacy_metrics' => 'array',
         'solver_metrics' => 'array',
         'legacy_raw_allocations' => 'array',
