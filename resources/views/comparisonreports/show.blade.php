@@ -309,8 +309,8 @@
                     {{-- ============================ --}}
                     <h3 class="mb-3">Matriz de Contingência de Bloco</h3>
                     <p class="text-muted small mb-3">
-                        Linhas = bloco de preferência (pós-graduação → A; graduação → B).
-                        Colunas = bloco real da sala alocada.
+                        Linhas = nível da turma (Pós-graduação prefere Bloco A; Graduação prefere Bloco B).
+                        Colunas = bloco real da sala alocada (Bloco A, Bloco B, Outro ou Não alocada).
                         Dobradinhas mistas (grad + pós) não aparecem.
                         Células coloridas pela frequência relativa.
                     </p>
@@ -324,8 +324,11 @@
                                             <thead class="thead-light">
                                                 <tr>
                                                     <th>Esperado \ Real</th>
+                                                    @php
+                                                        $colLabels = ['A' => 'Bloco A', 'B' => 'Bloco B'];
+                                                    @endphp
                                                     @foreach ($analytics['block_contingency']['categories'] as $cat)
-                                                        <th>{{ $cat }}</th>
+                                                        <th>{{ $colLabels[$cat] ?? $cat }}</th>
                                                     @endforeach
                                                 </tr>
                                             </thead>
@@ -336,9 +339,12 @@
                                                         @php if ($v > $maxVal) $maxVal = $v; @endphp
                                                     @endforeach
                                                 @endforeach
+                                                @php
+                                                    $rowLabels = ['A' => 'Pós-graduação', 'B' => 'Graduação'];
+                                                @endphp
                                                 @foreach ($matrix as $exp => $row)
                                                     <tr>
-                                                        <td class="font-weight-bold">{{ $exp }}</td>
+                                                        <td class="font-weight-bold">{{ $rowLabels[$exp] ?? $exp }}</td>
                                                         @foreach ($row as $act => $v)
                                                             @php
                                                                 $intensity = $maxVal > 0 ? ($v / $maxVal) : 0;
