@@ -354,6 +354,169 @@ class AllocationEvaluatorServiceTest extends TestCase
     }
 
     /** @test */
+    public function breakdown_zeros_waste_when_smallest_room_still_exceeds_comfort_zone()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        // Bloco B: menor sala = 50 assentos.
+        $roomSmallB = Room::factory()->create(['nome' => 'B101', 'assentos' => 50]);
+        $roomBigB = Room::factory()->create(['nome' => 'B102', 'assentos' => 100]);
+
+        // Graduação (expected_block B), demanda 30.
+        // Mesmo na menor sala (50): folga = 20/50 = 40% > 25% máximo.
+        // (1 - 0.25) * 50 = 37.5; demanda 30 < 37.5 => não há sala menor viável.
+        $class = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        // Outra turma na sala maior apenas para fixar a menor capacidade do
+        // bloco B em 50 (e não 100).
+        $other = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 90,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [
+            $class->id => $roomSmallB->id,
+            $other->id => $roomBigB->id,
+        ]);
+
+        $r = collect($bd)->firstWhere('class_id', $class->id);
+
+        // Sem isenção: maxComfort = 30/0.75 = 40, capacity 50 => waste 10.
+        // Com isenção (menor sala do bloco, demanda < 37.5): waste = 0.
+        $this->assertEquals(0.0, $r['waste']);
+        $this->assertFalse($r['in_comfort_zone']);
+    }
+
+    /** @test */
+    public function breakdown_zeros_waste_for_postgrad_in_smallest_block_a_room()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        $roomSmallA = Room::factory()->create(['nome' => 'A101', 'assentos' => 40]);
+        $roomBigA = Room::factory()->create(['nome' => 'A102', 'assentos' => 120]);
+
+        // Pós-graduação (expected_block A), demanda 25.
+        // (1 - 0.25) * 40 = 30; 25 < 30 => isenta na menor sala do bloco A.
+        $pos = SchoolClass::factory()->withSchoolTerm($term)->graduate()->create([
+            'estmtr' => 25,
+            'externa' => false,
+        ]);
+        $other = SchoolClass::factory()->withSchoolTerm($term)->graduate()->create([
+            'estmtr' => 110,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [
+            $pos->id => $roomSmallA->id,
+            $other->id => $roomBigA->id,
+        ]);
+
+        $r = collect($bd)->firstWhere('class_id', $pos->id);
+
+        // Sem isenção: maxComfort = 25/0.75 = 33.33, capacity 40 => waste 6.67.
+        $this->assertEquals(0.0, $r['waste']);
+    }
+
+    /** @test */
+    public function breakdown_zeros_waste_for_mixed_fusion_using_min_of_both_blocks()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        // Menor capacidade: A = 40, B = 50 => min = 40.
+        $roomSmallA = Room::factory()->create(['nome' => 'A101', 'assentos' => 40]);
+        $roomSmallB = Room::factory()->create(['nome' => 'B101', 'assentos' => 50]);
+
+        $grad = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 15,
+            'externa' => false,
+        ]);
+        $pos = SchoolClass::factory()->withSchoolTerm($term)->graduate()->create([
+            'estmtr' => 10,
+            'externa' => false,
+        ]);
+
+        $fusion = \App\Models\Fusion::factory()->withMaster($grad)->create();
+        $grad->fusion()->associate($fusion)->save();
+        $pos->fusion()->associate($fusion)->save();
+
+        // Demanda somada = 25. Alocada na menor sala entre os blocos (A101, 40).
+        // (1 - 0.25) * 40 = 30; 25 < 30 => isenta (fusão mista, expected null).
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [
+            $grad->id => $roomSmallA->id,
+            // roomSmallB precisa aparecer no conjunto para fixar min B = 50.
+            $pos->id => $roomSmallB->id,
+        ]);
+
+        $record = collect($bd)->firstWhere('class_id', $grad->id);
+
+        $this->assertNull($record['expected_block']);
+        // Sem isenção: maxComfort = 25/0.75 = 33.33, capacity 40 => waste 6.67.
+        $this->assertEquals(0.0, $record['waste']);
+    }
+
+    /** @test */
+    public function breakdown_keeps_waste_when_allocated_room_is_not_the_smallest()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        // Bloco B: menor sala = 50, mas a turma vai para a sala maior (100).
+        $roomSmallB = Room::factory()->create(['nome' => 'B101', 'assentos' => 50]);
+        $roomBigB = Room::factory()->create(['nome' => 'B102', 'assentos' => 100]);
+
+        $class = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 30,
+            'externa' => false,
+        ]);
+        $other = SchoolClass::factory()->withSchoolTerm($term)->undergraduate()->create([
+            'estmtr' => 45,
+            'externa' => false,
+        ]);
+
+        $service = new AllocationEvaluatorService();
+        $bd = $service->breakdown($term, [
+            $class->id => $roomBigB->id,
+            $other->id => $roomSmallB->id,
+        ]);
+
+        $r = collect($bd)->firstWhere('class_id', $class->id);
+
+        // capacity 100 != min B (50) => não isenta. waste = 100 - 40 = 60.
+        $this->assertEqualsWithDelta(60.0, $r['waste'], 0.01);
+    }
+
+    /** @test */
+    public function min_capacities_by_block_returns_min_per_block()
+    {
+        Room::factory()->create(['nome' => 'A101', 'assentos' => 80]);
+        Room::factory()->create(['nome' => 'A102', 'assentos' => 40]);
+        Room::factory()->create(['nome' => 'B101', 'assentos' => 50]);
+        Room::factory()->create(['nome' => 'B102', 'assentos' => 120]);
+        // Sala fora dos blocos A/B é ignorada.
+        $ignored = Room::factory()->create(['nome' => 'X999', 'assentos' => 5]);
+
+        $ids = Room::pluck('id')->all();
+
+        $mins = AllocationEvaluatorService::minCapacitiesByBlock($ids);
+
+        $this->assertEquals(40.0, $mins['A']);
+        $this->assertEquals(50.0, $mins['B']);
+    }
+
+    /** @test */
+    public function min_capacities_by_block_returns_nulls_for_empty_input()
+    {
+        $mins = AllocationEvaluatorService::minCapacitiesByBlock([]);
+
+        $this->assertNull($mins['A']);
+        $this->assertNull($mins['B']);
+    }
+
+    /** @test */
     public function breakdown_fusion_without_master_falls_back_to_min_child_id()
     {
         $term = SchoolTerm::factory()->create();

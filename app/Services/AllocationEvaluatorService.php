@@ -129,6 +129,7 @@ class AllocationEvaluatorService
     {
         $classes = $this->loadClasses($schoolTerm);
         $rooms = $this->loadRooms($allocations);
+        $minCapacities = self::minCapacitiesByBlock($rooms->keys()->all());
 
         $epsilon = 1e-9;
         $result = [];
@@ -144,7 +145,7 @@ class AllocationEvaluatorService
                 continue;
             }
 
-            $result[] = $this->buildRecord($class, (float) $class->estmtr, $allocations, $rooms, $epsilon, null, $this->expectedBlock($class));
+            $result[] = $this->buildRecord($class, (float) $class->estmtr, $allocations, $rooms, $epsilon, null, $this->expectedBlock($class), $minCapacities);
         }
 
         foreach ($fused as $children) {
@@ -167,7 +168,7 @@ class AllocationEvaluatorService
             $representative = $children->firstWhere('id', $masterId)
                 ?? $children->sortBy('id')->first();
 
-            $result[] = $this->buildRecord($representative, $demand, $allocations, $rooms, $epsilon, $masterId, $this->expectedBlockForGroup($children));
+            $result[] = $this->buildRecord($representative, $demand, $allocations, $rooms, $epsilon, $masterId, $this->expectedBlockForGroup($children), $minCapacities);
         }
 
         return $result;
@@ -189,8 +190,12 @@ class AllocationEvaluatorService
      *                                    computado considerando todas as filhas
      *                                    da fusão); null usa a turma represen-
      *                                    tante.
+     * @param array{A: float|null, B: float|null} $minCapacities Menor capacidade
+     *                                                            de cada bloco
+     *                                                            entre as salas
+     *                                                            referenciadas.
      */
-    private function buildRecord(SchoolClass $class, float $demand, array $allocations, Collection $rooms, float $epsilon, ?int $recordId = null, ?string $expectedBlock = null): array
+    private function buildRecord(SchoolClass $class, float $demand, array $allocations, Collection $rooms, float $epsilon, ?int $recordId = null, ?string $expectedBlock = null, array $minCapacities = ['A' => null, 'B' => null]): array
     {
         $classId = $recordId ?? $class->id;
 
@@ -227,6 +232,14 @@ class AllocationEvaluatorService
 
             if ($capacity > $maxComfortCapacity + $epsilon) {
                 $waste = $capacity - $maxComfortCapacity;
+            }
+
+            // Zera o waste quando a turma está na menor sala possível do
+            // bloco relevante e mesmo essa sala produziria folga acima do
+            // máximo permitido — não há sala menor disponível para acomodá-la
+            // dentro da zona de conforto, logo não houve desperdício.
+            if ($waste > $epsilon && $this->isSmallestRoomWasteExempt($capacity, $expectedBlock, $minCapacities, $demand, $maxFolga, $epsilon)) {
+                $waste = 0.0;
             }
 
             if ($capacity < $minComfortCapacity - $epsilon) {
@@ -366,6 +379,96 @@ class AllocationEvaluatorService
         $letter = strtoupper($name[0]);
 
         return in_array($letter, ['A', 'B'], true) ? $letter : null;
+    }
+
+    /**
+     * Retorna a menor capacidade de sala por bloco ('A' e 'B') entre as salas
+     * cujos ids foram informados.
+     *
+     * Salas cujo nome não começa com 'A' ou 'B' são ignoradas. O agrupamento
+     * por bloco usa a primeira letra do nome (mesma convenção de roomBlock).
+     *
+     * @param array<int, int> $roomIds
+     * @return array{A: float|null, B: float|null}
+     */
+    public static function minCapacitiesByBlock(array $roomIds): array
+    {
+        $mins = ['A' => null, 'B' => null];
+
+        if (empty($roomIds)) {
+            return $mins;
+        }
+
+        foreach (Room::whereIn('id', $roomIds)->get() as $room) {
+            $name = trim($room->nome ?? '');
+
+            if ($name === '') {
+                continue;
+            }
+
+            $letter = strtoupper($name[0]);
+
+            if (! in_array($letter, ['A', 'B'], true)) {
+                continue;
+            }
+
+            $assentos = (float) $room->assentos;
+
+            if ($mins[$letter] === null || $assentos < $mins[$letter]) {
+                $mins[$letter] = $assentos;
+            }
+        }
+
+        return $mins;
+    }
+
+    /**
+     * Determina a menor capacidade relevante para a unidade de alocação,
+     * conforme o bloco de preferência:
+     *  - 'A' (pós-graduação): menor capacidade do Bloco A;
+     *  - 'B' (graduação): menor capacidade do Bloco B;
+     *  - null (fusão mista): min entre as menores capacidades de A e B.
+     *
+     * @param array{A: float|null, B: float|null} $minCapacities
+     */
+    private function relevantMinCapacity(?string $expectedBlock, array $minCapacities): ?float
+    {
+        if ($expectedBlock === 'A') {
+            return $minCapacities['A'] ?? null;
+        }
+
+        if ($expectedBlock === 'B') {
+            return $minCapacities['B'] ?? null;
+        }
+
+        $available = array_filter(
+            [$minCapacities['A'] ?? null, $minCapacities['B'] ?? null],
+            fn ($v) => $v !== null
+        );
+
+        return empty($available) ? null : min($available);
+    }
+
+    /**
+     * Verifica se o waste deve ser zerado porque a turma está na menor sala
+     * possível do bloco relevante e mesmo essa sala produziria folga acima do
+     * máximo permitido.
+     *
+     * @param array{A: float|null, B: float|null} $minCapacities
+     */
+    private function isSmallestRoomWasteExempt(float $capacity, ?string $expectedBlock, array $minCapacities, float $demand, float $maxFolga, float $epsilon): bool
+    {
+        $minCap = $this->relevantMinCapacity($expectedBlock, $minCapacities);
+
+        if ($minCap === null) {
+            return false;
+        }
+
+        if (abs($capacity - $minCap) > $epsilon) {
+            return false;
+        }
+
+        return $demand < (1.0 - $maxFolga) * $minCap;
     }
 
     private function safeRate(int $numerator, int $denominator): float
