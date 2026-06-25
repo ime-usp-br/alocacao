@@ -77,6 +77,8 @@ class DistributesRoomRequest extends FormRequest
             'solver_config.unassigned_penalty' => 'nullable|numeric',
             'solver_config.priority_weight' => 'nullable|numeric',
 
+            'solver_config.time_limit_seconds' => 'nullable|integer|min:1',
+
             'solver_config.historical_estimation_method' => 'nullable|in:average_plus_stddev,none',
             'solver_config.historical_threshold_percent' => 'nullable|numeric|min:0',
             'solver_config.historical_lookback_years' => 'nullable|integer|min:1',

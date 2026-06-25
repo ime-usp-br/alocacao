@@ -292,6 +292,7 @@ $tooltips = [
     'historical_min_years' => 'Número mínimo de anos históricos com dados para considerar a estimativa confiável.',
     'historical_cap' => 'Teto máximo para a demanda estimada.',
     'historical_stddev_multiplier' => 'Multiplicador do desvio padrão somado à média no método average_plus_stddev.',
+    'time_limit_seconds' => 'Tempo máximo (em segundos) que o solver terá para buscar a solução ideal. Ao expirar, retorna a melhor solução encontrada até o momento.',
 ];
 @endphp
 
@@ -322,17 +323,17 @@ $tooltips = [
                     </li>
                 </ul>
 
-                <div class="tab-content p-3 border border-top-0 rounded-bottom">
+                <div class="tab-content border border-top-0 rounded-bottom bg-light">
                     <!-- Aba 1 - Hard Constraints -->
-                    <div class="tab-pane fade show active" id="tab-hard" role="tabpanel">
+                    <div class="tab-pane fade show active p-4" id="tab-hard" role="tabpanel">
                         <div class="row">
                             @foreach ([
                                 'strict_capacity' => 'Capacidade Estrita',
                                 'block_b_restriction_for_pos' => 'Restrição Bloco B p/ Pós',
                                 'block_a_restriction_for_freshmen' => 'Restrição Bloco A p/ Calouros',
                             ] as $key => $label)
-                                <div class="col-md-4">
-                                    <div class="form-group">
+                                <div class="col-md-4 mb-3">
+                                    <div class="form-group mb-0">
                                         <div class="custom-control custom-switch">
                                             <input type="hidden" name="solver_config[{{ $key }}]" value="0" form="distributesForm">
                                             <input type="checkbox" class="custom-control-input" id="solver_config_{{ $key }}"
@@ -347,27 +348,19 @@ $tooltips = [
                                     </div>
                                 </div>
                             @endforeach
-
-                            <div class="col-md-4">
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
                                 <div class="form-group">
-                                    <div class="custom-control custom-switch">
-                                        <input type="hidden" name="sync_enrollment" value="0" form="distributesForm">
-                                        <input type="checkbox" class="custom-control-input" id="sync_enrollment"
-                                            name="sync_enrollment" value="1"
-                                            form="distributesForm"
-                                            checked>
-                                        <label class="custom-control-label" for="sync_enrollment"
-                                            data-toggle="tooltip" data-placement="top" title="{{ $tooltips['sync_enrollment'] }}">
-                                            Atualizar inscritos (Replicado)
-                                        </label>
-                                    </div>
+                                    <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips['time_limit_seconds'] }}">Tempo Limite (segundos)</label>
+                                    <input type="number" step="1" min="1" class="form-control" name="solver_config[time_limit_seconds]" value="{{ config('alocacao.room_allocation.time_limit_seconds') }}" form="distributesForm">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Aba 2 - Soft Constraints -->
-                    <div class="tab-pane fade" id="tab-soft" role="tabpanel">
+                    <div class="tab-pane fade p-4" id="tab-soft" role="tabpanel">
                         <div class="row">
                             @foreach ([
                                 'undergrad_in_block_a_penalty' => 'Penalidade Graduação Bloco A',
@@ -381,9 +374,9 @@ $tooltips = [
                                 'unassigned_penalty' => 'Penalidade Turma sem Sala',
                                 'priority_weight' => 'Peso de Prioridade',
                             ] as $key => $label)
-                                <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-group mb-0">
+                                        <label class="font-weight-bold small" data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
                                         <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.room_allocation.' . $key) }}" form="distributesForm">
                                     </div>
                                 </div>
@@ -392,11 +385,11 @@ $tooltips = [
                     </div>
 
                     <!-- Aba 3 - Estimativa 1º Sem -->
-                    <div class="tab-pane fade" id="tab-estimativa" role="tabpanel">
+                    <div class="tab-pane fade p-4" id="tab-estimativa" role="tabpanel">
                         <div class="row">
-                            <div class="col-md-6">
-                                <div class="form-group">
-                                    <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips['historical_estimation_method'] }}">Método</label>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-group mb-0">
+                                    <label class="font-weight-bold small" data-toggle="tooltip" data-placement="top" title="{{ $tooltips['historical_estimation_method'] }}">Método</label>
                                     <select name="solver_config[historical_estimation_method]" class="form-control" form="distributesForm">
                                         <option value="average_plus_stddev" {{ config('alocacao.historical_estimation_method') === 'average_plus_stddev' ? 'selected' : '' }}>average_plus_stddev</option>
                                         <option value="none" {{ config('alocacao.historical_estimation_method') === 'none' ? 'selected' : '' }}>none</option>
@@ -410,14 +403,27 @@ $tooltips = [
                                 'historical_cap' => 'Limite/Cap',
                                 'historical_stddev_multiplier' => 'Multiplicador DP',
                             ] as $key => $label)
-                                <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label class="font-weight-bold" data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-group mb-0">
+                                        <label class="font-weight-bold small" data-toggle="tooltip" data-placement="top" title="{{ $tooltips[$key] }}">{{ $label }}</label>
                                         <input type="number" step="any" class="form-control" name="solver_config[{{ $key }}]" value="{{ config('alocacao.' . $key) }}" form="distributesForm">
                                     </div>
                                 </div>
                             @endforeach
                         </div>
+                    </div>
+                </div>
+                <div class="p-3 border-left border-right border-bottom rounded-bottom mt-2">
+                    <div class="custom-control custom-switch">
+                        <input type="hidden" name="sync_enrollment" value="0" form="distributesForm">
+                        <input type="checkbox" class="custom-control-input" id="sync_enrollment"
+                            name="sync_enrollment" value="1"
+                            form="distributesForm"
+                            checked>
+                        <label class="custom-control-label font-weight-bold" for="sync_enrollment"
+                            data-toggle="tooltip" data-placement="top" title="{{ $tooltips['sync_enrollment'] }}">
+                            Atualizar inscritos (Replicado)
+                        </label>
                     </div>
                 </div>
                 <div class="p-3 border-left border-right border-bottom rounded-bottom mt-2">
