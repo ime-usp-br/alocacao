@@ -31,6 +31,7 @@ use App\Models\Priority;
 use App\Models\SchoolClass;
 use App\Models\CourseInformation;
 use App\Models\Fusion;
+use App\Models\SolverLog;
 use App\Services\ReservationApiService;
 use App\Services\AllocationStateService;
 use Illuminate\Support\Facades\Auth;
