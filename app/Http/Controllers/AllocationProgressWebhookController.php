@@ -69,7 +69,7 @@ class AllocationProgressWebhookController extends Controller
         }
 
         // Ignore out-of-order progress updates and terminal statuses
-        $terminalStatuses = ['completed', 'error'];
+        $terminalStatuses = ['completed', 'error', 'cancelled'];
         $isTerminal = in_array($existing['status'] ?? '', $terminalStatuses, true);
         $currentProgress = $existing['progress'] ?? 0;
 

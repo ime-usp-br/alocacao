@@ -38,6 +38,8 @@
                                         <span class="badge badge-danger">{{ $log->status }}</span>
                                     @elseif ($log->status === 'solving')
                                         <span class="badge badge-warning">{{ $log->status }}</span>
+                                    @elseif ($log->status === 'cancelled')
+                                        <span class="badge badge-info">{{ $log->status }}</span>
                                     @else
                                         <span class="badge badge-secondary">{{ $log->status }}</span>
                                     @endif

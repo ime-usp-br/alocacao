@@ -68,6 +68,16 @@ class AllocationResultWebhookController extends Controller
             return response()->json(['message' => 'Ignored. Obsolete job.'], 200);
         }
 
+        // Ignore results for jobs that were cancelled by the user
+        if (($activeJob['status'] ?? '') === 'cancelled') {
+            Log::info('AllocationResultWebhook: ignoring result for cancelled job', [
+                'job_id' => $jobId,
+                'school_term_id' => $schoolTermId,
+            ]);
+
+            return response()->json(['message' => 'Ignored. Job was cancelled.'], 200);
+        }
+
         if ($status === 'error') {
             $activeJob['status'] = 'error';
             $activeJob['progress'] = 100;

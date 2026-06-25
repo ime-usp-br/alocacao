@@ -82,7 +82,7 @@ class MonitorController extends Controller
             ]);
         }
 
-        $terminalStatuses = ['completed', 'error', 'timeout'];
+        $terminalStatuses = ['completed', 'error', 'timeout', 'cancelled'];
         $isFailed = in_array($cached['status'], $terminalStatuses) && $cached['status'] !== 'completed';
 
         return response()->json([

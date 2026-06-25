@@ -144,6 +144,28 @@ class AllocationWebhookTest extends TestCase
     }
 
     /** @test */
+    public function progress_webhook_ignores_progress_for_cancelled_jobs()
+    {
+        $term = SchoolTerm::factory()->create();
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'job-cancel',
+            'status' => 'cancelled',
+            'progress' => 50,
+        ], now()->addHour());
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-progress', [
+            'job_id' => 'job-cancel',
+            'progress' => 80,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['message' => 'Ignored. Stale progress.']);
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals(50, $cached['progress']);
+    }
+
+    /** @test */
     public function result_webhook_applies_assignments_atomically()
     {
         $term = SchoolTerm::factory()->create();
@@ -286,6 +308,39 @@ class AllocationWebhookTest extends TestCase
 
         $response->assertOk();
         $response->assertJson(['message' => 'Ignored. Obsolete job.']);
+    }
+
+    /** @test */
+    public function result_webhook_ignores_cancelled_jobs()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+        $class = SchoolClass::factory()->create([
+            'school_term_id' => $term->id,
+            'room_id' => null,
+        ]);
+
+        Cache::put("allocation:job:cancel-job", $term->id, now()->addHour());
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'cancel-job',
+            'status' => 'cancelled',
+            'progress' => 100,
+        ], now()->addHour());
+
+        $response = $this->withWebhookToken()->postJson('/api/webhooks/allocation-result', [
+            'job_id' => 'cancel-job',
+            'status' => 'optimal',
+            'allocations' => [
+                ['group_id' => $class->id, 'room_id' => $room->id],
+            ],
+            'unassigned_groups' => [],
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['message' => 'Ignored. Job was cancelled.']);
+
+        // Ensure no allocation was applied
+        $this->assertNull($class->fresh()->room_id);
     }
 
     /** @test */

@@ -259,7 +259,7 @@ class RoomController extends Controller
 
         // Prevent double-dispatch for the same school term
         $existing = Cache::get("allocation:{$schoolterm->id}");
-        if ($existing && !in_array($existing['status'] ?? '', ['completed', 'error', 'timeout'])) {
+        if ($existing && !in_array($existing['status'] ?? '', ['completed', 'error', 'timeout', 'cancelled'])) {
             Session::put("alert-warning", "Já existe uma distribuição em andamento para este semestre.");
             return back();
         }
@@ -354,7 +354,7 @@ class RoomController extends Controller
             return back();
         }
 
-        if (in_array($cached['status'], ['completed', 'error', 'timeout'])) {
+        if (in_array($cached['status'], ['completed', 'error', 'timeout', 'cancelled'])) {
             Session::put("alert-info", "A distribuição já foi finalizada.");
             return back();
         }
@@ -368,6 +368,11 @@ class RoomController extends Controller
         $apiToken = config('alocacao.solver.api_token');
         $jobId = $cached['job_id'];
 
+        // Best-effort: try to notify the solver to stop. Regardless of the
+        // outcome, mark the job as cancelled locally so the UI does not hang
+        // waiting for partial results that may never arrive (e.g. when the
+        // solver worker was already killed by OOM or a crash).
+        $solverNotified = false;
         try {
             $http = Http::withHeaders([
                     'X-Webhook-Token' => $apiToken,
@@ -380,23 +385,30 @@ class RoomController extends Controller
             }
 
             $response = $http->post("{$solverUrl}/api/v1/jobs/{$jobId}/stop");
-
-            if ($response->successful()) {
-                $cached['status'] = 'stopping';
-                $cached['message'] = 'Solicitação de cancelamento enviada ao solver';
-                Cache::put("allocation:{$schoolterm->id}", $cached, now()->addHours(4));
-
-                Session::put("alert-info", "Solicitação de cancelamento enviada. Aguardando resultados parciais.");
-            } else {
-                Session::put("alert-danger", "Não foi possível cancelar a distribuição. Tente novamente.");
-            }
+            $solverNotified = $response->successful();
         } catch (\Exception $e) {
             Log::error('RoomController@stopDistribution: failed to contact solver', [
                 'job_id' => $jobId,
                 'error' => $e->getMessage(),
             ]);
-            Session::put("alert-danger", "Erro de comunicação com o solver. Tente novamente.");
         }
+
+        $cached['status'] = 'cancelled';
+        $cached['progress'] = 100;
+        $cached['message'] = $solverNotified
+            ? 'Distribuição cancelada. O solver foi notificado.'
+            : 'Distribuição cancelada. Não foi possível notificar o solver (o worker pode ter sido finalizado).';
+        $cached['finished_at'] = now()->toIso8601String();
+        Cache::put("allocation:{$schoolterm->id}", $cached, now()->addHours(4));
+
+        SolverLog::where('job_id', $jobId)->update([
+            'status' => 'cancelled',
+            'responded_at' => now(),
+        ]);
+
+        Session::put("alert-info", $solverNotified
+            ? "Distribuição cancelada com sucesso."
+            : "Distribuição cancelada. O solver não respondeu, mas a distribuição foi finalizada localmente.");
 
         return back();
     }

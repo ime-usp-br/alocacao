@@ -224,7 +224,7 @@ class DistributionFlowTest extends TestCase
         ], now()->addHour());
 
         Http::fake([
-            'http://solver.test/api/v1/jobs/stop-123/stop' => Http::response(['status' => 'stopping'], 200),
+            'http://solver.test/api/v1/jobs/stop-123/stop' => Http::response(['status' => 'ok'], 200),
         ]);
 
         $response = $this->actingAsOperator()
@@ -238,7 +238,31 @@ class DistributionFlowTest extends TestCase
         });
 
         $cached = Cache::get("allocation:{$term->id}");
-        $this->assertEquals('stopping', $cached['status']);
+        $this->assertEquals('cancelled', $cached['status']);
+    }
+
+    /** @test */
+    public function stop_distribution_marks_cancelled_even_when_solver_unreachable()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'stop-456',
+            'status' => 'solving',
+        ], now()->addHour());
+
+        Http::fake([
+            'http://solver.test/api/v1/jobs/stop-456/stop' => Http::response('', 500),
+        ]);
+
+        $response = $this->actingAsOperator()
+            ->post('/rooms/distribution/stop');
+
+        $response->assertRedirect();
+        $response->assertSessionHas('alert-info');
+
+        $cached = Cache::get("allocation:{$term->id}");
+        $this->assertEquals('cancelled', $cached['status']);
     }
 
     /** @test */
@@ -290,6 +314,52 @@ class DistributionFlowTest extends TestCase
             'status' => 'error',
             'failed' => true,
         ]);
+    }
+
+    /** @test */
+    public function monitor_reports_cancelled_status()
+    {
+        $term = SchoolTerm::factory()->create();
+
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'cancel-123',
+            'status' => 'cancelled',
+            'progress' => 100,
+            'message' => 'Distribuição cancelada.',
+        ], now()->addHour());
+
+        $response = $this->actingAsOperator()
+            ->get('/monitor/getDistributionProcess');
+
+        $response->assertOk();
+        $response->assertJson([
+            'progress' => 100,
+            'status' => 'cancelled',
+            'failed' => true,
+        ]);
+    }
+
+    /** @test */
+    public function new_distribution_allowed_after_cancelled()
+    {
+        $term = SchoolTerm::factory()->create();
+        $room = Room::factory()->create();
+
+        Cache::put("allocation:{$term->id}", [
+            'job_id' => 'old-cancelled',
+            'status' => 'cancelled',
+            'progress' => 100,
+        ], now()->addHour());
+
+        Http::fake([
+            'http://solver.test/api/v1/solve' => Http::response(['job_id' => 'new-job'], 200),
+        ]);
+
+        $response = $this->actingAsAdmin()
+            ->patch('/rooms/distributes', ['rooms_id' => [$room->id]]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('alert-info');
     }
 
     /** @test */

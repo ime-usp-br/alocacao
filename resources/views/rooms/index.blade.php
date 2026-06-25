@@ -586,6 +586,7 @@ $( function() {
                 if(json && 'progress' in json){
                     var isFailed = json['failed'] || (json['data'] && JSON.parse(json['data'])['status'] === 'error');
                     var isCompleted = json['status'] === 'completed';
+                    var isCancelled = json['status'] === 'cancelled';
                     var isComparison = json['status'] === 'comparison';
 
                     if(isComparison){
@@ -619,6 +620,24 @@ $( function() {
                         document.getElementById("btn-empty").disabled = true;
                         document.getElementById("btn-distributes-spinner").style.display = 'inline-block';
                         $( "#progressbar" ).remove();
+                    }else if(isCancelled){
+                        if (trackingJob) {
+                            document.getElementById("btn-reservation").disabled = false;
+                            document.getElementById("btn-distributes").disabled = false;
+                            document.getElementById("btn-empty").disabled = false;
+                            document.getElementById("btn-stop-distribution").style.display = 'none';
+                            document.getElementById("btn-fallback-distribution").style.display = 'inline-block';
+                            document.getElementById("btn-distributes-spinner").style.display = 'none';
+                            $( "#progressbar" ).remove();
+                            $('#rooms-flash').empty();
+                            $('#rooms-flash').append("<p id='info-message' class='alert alert-warning'>" +
+                                (json['message'] || 'Distribuição cancelada.') + "</p>");
+
+                            setTimeout(function() { window.location.reload(); }, 2500);
+                        }
+
+                        trackingJob = false;
+                        return;
                     }else if(isFailed){
                         if (trackingJob) {
                             document.getElementById("btn-reservation").disabled = false;
