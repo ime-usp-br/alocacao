@@ -156,23 +156,82 @@ class RoomController extends Controller
 
         $dias = ['seg', 'ter', 'qua', 'qui', 'sex'];  
 
-        $rooms = [];
+        // A single eager-loaded collection of rooms (with their allocated
+        // classes and schedules) reused for both the free-time grid and the
+        // "Salas Compatíveis" column. This replaces the per-turma Room::all()
+        // calls previously made inside the Blade, which triggered an N+1
+        // explosion of ~12.700 queries via isCompatible/isInConflict.
+        //
+        // schoolclasses is loaded unscoped (all semesters) on purpose: that is
+        // exactly what the former Room::all()->isCompatible() iterated over, so
+        // the compatibility output is byte-identical. The grid, which the old
+        // SQL scoped with whereBelongsTo($st), filters by the active semester
+        // in PHP below.
+        $salasCompativeis = Room::with([
+            'schoolclasses',
+            'schoolclasses.classschedules',
+        ])->get();
 
+        // Free-time grid: a room is free at (dia, horent, horsai) when none of
+        // its schoolclasses of the active semester has a schedule that overlaps
+        // the slot (same overlap criterion as the former NOT EXISTS query:
+        // diasmnocp == dia && horsai > horent && horent < horsai).
+        $rooms = [];
         foreach($dias as $dia){
-            foreach($horarios as $horent=>$horsai){
-                $rooms[$dia][$horent][$horsai] = Room::whereDoesntHave("schoolclasses",function($query)use($st,$dia,$horent,$horsai){
-                    $query->whereBelongsTo($st)->whereHas("classschedules",function($query)use($dia,$horent,$horsai){
-                        $query->where("diasmnocp",$dia)->where("horsai",">",$horent)->where("horent","<",$horsai);
-                    });
-                })->get();
+            foreach($horarios as $horent => $horsai){
+                $rooms[$dia][$horent][$horsai] = collect();
             }
         }
+
+        foreach($salasCompativeis as $room){
+            foreach($dias as $dia){
+                foreach($horarios as $horent => $horsai){
+                    $busy = false;
+                    foreach($room->schoolclasses as $sc){
+                        if($sc->school_term_id != $st->id){
+                            continue;
+                        }
+                        foreach($sc->classschedules as $cs){
+                            if($cs->diasmnocp === $dia && $cs->horsai > $horent && $cs->horent < $horsai){
+                                $busy = true;
+                                break 2;
+                            }
+                        }
+                    }
+                    if(!$busy){
+                        $rooms[$dia][$horent][$horsai]->push($room);
+                    }
+                }
+            }
+        }
+
+        // Unallocated classes moved out of the Blade, with eager loading of the
+        // pivot relationships (classschedules, instructors) accessed while
+        // rendering each row.
+        $turmas_nao_alocadas = SchoolClass::whereBelongsTo($st)
+            ->where("externa", false)
+            ->whereDoesntHave("room")
+            ->whereDoesntHave("fusion")
+            ->with(['classschedules', 'instructors'])
+            ->get()
+            ->sortBy("coddis");
+
+        // Unallocated fusions moved out of the Blade, with eager loading.
+        $dobradinhas_nao_alocadas = Fusion::whereHas("schoolclasses", function ($query) use ($st){
+            $query->whereBelongsTo($st);
+        })->whereHas("master", function ($query){
+            $query->whereDoesntHave("room");
+        })->with(['master.classschedules', 'master.instructors', 'schoolclasses'])
+          ->get();
 
         return view('rooms.showFreeTime', compact([
             "st",
             "dias",
             "horarios",
             "rooms",
+            "salasCompativeis",
+            "turmas_nao_alocadas",
+            "dobradinhas_nao_alocadas",
         ]));
     }
 

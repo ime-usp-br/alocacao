@@ -9,11 +9,6 @@
         <div class="col-md-12">
             <h1 class='text-center mb-5'>Salas livres por horário</h1>
 
-            @php
-
-
-            @endphp
-
             <div class="d-flex justify-content-center">
                 <div class="col-md-12">
                     <table class="table table-bordered" style="font-size:15px;">
@@ -28,7 +23,7 @@
                                 <td style="vertical-align: middle;">{{ $horent }}<br>às<br>{{ $horsai }}</td>
                                 @foreach($dias as $dia)                          
                                 <td style="vertical-align: middle;">
-                                    @foreach($rooms[$dia][$horent][$horsai] ? range(0, count($rooms[$dia][$horent][$horsai])-1) : [] as $x)
+                                    @foreach($rooms[$dia][$horent][$horsai]->isNotEmpty() ? range(0, count($rooms[$dia][$horent][$horsai])-1) : [] as $x)
                                         <a class="text-dark" target="_blank"
                                             href="{{ route('rooms.show', $rooms[$dia][$horent][$horsai][$x]) }}"
                                         >
@@ -46,14 +41,6 @@
                         @endforeach
                     </table>
 
-                    @php
-                        $turmas_nao_alocadas = App\Models\SchoolClass::whereBelongsTo($st)->where("externa", false)->whereDoesntHave("room")->whereDoesntHave("fusion")->get();
-                        $dobradinhas_nao_alocadas = App\Models\Fusion::whereHas("schoolclasses", function ($query) use ($st){
-                                                            $query->whereBelongsTo($st);
-                                                        })->whereHas("master", function ($query){
-                                                            $query->whereDoesntHave("room");
-                                                        })->get();
-                    @endphp
                     @if($turmas_nao_alocadas)
                     <br>
                     <h3 class='text-center mb-5'>Turmas não alocadas</h3>
@@ -99,23 +86,22 @@
                                     </td>
                                     <td style="white-space: nowrap;">
                                         @php
-                                            $rooms = App\Models\Room::all();
-                                            $rooms = $rooms->filter(function($room)use($turma){
+                                            $compativeis = $salasCompativeis->filter(function($room) use($turma){
                                                 return $room->isCompatible($turma,$ignore_estmtr=true, $ignore_block=true);
                                             })->values();
-                                        @endphp   
-                                        @foreach($rooms->isNotEmpty() ? range(0, count($rooms)-1) : [] as $x)
+                                        @endphp
+                                        @foreach($compativeis->isNotEmpty() ? range(0, count($compativeis)-1) : [] as $x)
                                             <a class="text-dark" target="_blank"
-                                                href="{{ route('rooms.show', $rooms[$x]) }}"
+                                                href="{{ route('rooms.show', $compativeis[$x]) }}"
                                             >
-                                                {{ $rooms[$x]->nome }}
+                                                {{ $compativeis[$x]->nome }}
                                             </a>
                                             @if(($x+1) % 3 == 0)
                                                 <br>
-                                            @elseif($x != count($rooms)-1)
+                                            @elseif($x != count($compativeis)-1)
                                                 -
                                             @endif
-                                        @endforeach   
+                                        @endforeach
                                     </td>
                                 </tr>
                             @endforeach
@@ -189,23 +175,22 @@
                                             </td>
                                             <td rowspan="{{count($fusion->schoolclasses)}}">  
                                                 @php
-                                                    $rooms = App\Models\Room::all();
-                                                    $rooms = $rooms->filter(function($room)use($fusion){
+                                                    $compativeis = $salasCompativeis->filter(function($room) use($fusion){
                                                         return $room->isCompatible($fusion->master,$ignore_estmtr=true, $ignore_block=true);
                                                     })->values();
-                                                @endphp   
-                                                @foreach($rooms->isNotEmpty() ? range(0, count($rooms)-1) : [] as $x)
+                                                @endphp
+                                                @foreach($compativeis->isNotEmpty() ? range(0, count($compativeis)-1) : [] as $x)
                                                     <a class="text-dark" target="_blank"
-                                                        href="{{ route('rooms.show', $rooms[$x]) }}"
+                                                        href="{{ route('rooms.show', $compativeis[$x]) }}"
                                                     >
-                                                        {{ $rooms[$x]->nome }}
+                                                        {{ $compativeis[$x]->nome }}
                                                     </a>
                                                     @if(($x+1) % 3 == 0)
                                                         <br>
-                                                    @elseif($x != count($rooms)-1)
+                                                    @elseif($x != count($compativeis)-1)
                                                         -
                                                     @endif
-                                                @endforeach   
+                                                @endforeach
                                             </td>
                                         @endif
                                     </tr>
