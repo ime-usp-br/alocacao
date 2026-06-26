@@ -125,8 +125,6 @@
                                 @php
                                     $label = "";
                                     $first = true;
-                                    $st = App\Models\SchoolTerm::getLatest();
-                                    $turmas_nao_alocadas = App\Models\SchoolClass::whereBelongsTo($st)->whereDoesntHave("room")->whereDoesntHave("fusion")->get();
                                     $i = 0;
 
                                     foreach($turmas_nao_alocadas as $turma){
@@ -142,12 +140,6 @@
                                         }
                                     }
 
-                                    $dobradinhas_nao_alocadas = App\Models\Fusion::whereHas("schoolclasses", function ($query) use ($st){
-                                                    $query->whereBelongsTo($st);
-                                                })->whereHas("master", function ($query){
-                                                    $query->whereDoesntHave("room");
-                                                })->get();
-                                    
                                     foreach($dobradinhas_nao_alocadas as $fusion){
                                         if($i < 20){
                                             if($sala->isCompatible($fusion->master, $ignore_block=true, $ignore_estmtr=true)){
@@ -173,7 +165,7 @@
                                         }
                                     }
                                     if($first){
-                                        if($turmas_nao_alocadas or $dobradinhas_nao_alocadas){ 
+                                        if($turmas_nao_alocadas->isNotEmpty() or $dobradinhas_nao_alocadas->isNotEmpty()){
                                             $label .= "Nenhuma turma compativel";
                                         }
                                     }

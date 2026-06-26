@@ -50,9 +50,27 @@ class RoomController extends Controller
             abort(403);
         }
 
-        $salas = Room::all();
+        $st = SchoolTerm::getLatest();
 
-        return view('rooms.index', compact(['salas']));
+        $salas = Room::with(['schoolclasses' => function ($query) use ($st) {
+            $query->whereBelongsTo($st);
+        }, 'schoolclasses.classschedules'])->get();
+
+        $turmas_nao_alocadas = SchoolClass::whereBelongsTo($st)
+            ->whereDoesntHave("room")
+            ->whereDoesntHave("fusion")
+            ->with(['classschedules', 'fusion.schoolclasses'])
+            ->get()
+            ->sortBy("coddis");
+
+        $dobradinhas_nao_alocadas = Fusion::whereHas("schoolclasses", function ($query) use ($st) {
+            $query->whereBelongsTo($st);
+        })->whereHas("master", function ($query) {
+            $query->whereDoesntHave("room");
+        })->with(['master.classschedules', 'master.fusion.schoolclasses', 'schoolclasses'])
+          ->get();
+
+        return view('rooms.index', compact(['salas', 'st', 'turmas_nao_alocadas', 'dobradinhas_nao_alocadas']));
     }
 
     /**
@@ -88,7 +106,35 @@ class RoomController extends Controller
             abort(403);
         }
 
-        return view('rooms.show', compact(['room']));
+        $st = SchoolTerm::getLatest();
+
+        $room->load(['schoolclasses' => function ($query) use ($st) {
+            $query->whereBelongsTo($st)->with(['classschedules', 'fusion.schoolclasses']);
+        }]);
+
+        $slots = [];
+        foreach ($room->schoolclasses as $sc) {
+            foreach ($sc->classschedules as $cs) {
+                $slots[$cs->diasmnocp][$cs->horent] = ['class' => $sc, 'schedule' => $cs];
+            }
+        }
+
+        $turmas_nao_alocadas = SchoolClass::whereBelongsTo($st)
+            ->where("externa", false)
+            ->whereDoesntHave("room")
+            ->whereDoesntHave("fusion")
+            ->with(['classschedules', 'instructors'])
+            ->get()
+            ->sortBy("coddis");
+
+        $dobradinhas_nao_alocadas = Fusion::whereHas("schoolclasses", function ($query) use ($st) {
+            $query->whereBelongsTo($st);
+        })->whereHas("master", function ($query) {
+            $query->whereDoesntHave("room");
+        })->with(['master.classschedules', 'master.fusion.schoolclasses', 'schoolclasses', 'schoolclasses.instructors'])
+          ->get();
+
+        return view('rooms.show', compact(['room', 'st', 'slots', 'turmas_nao_alocadas', 'dobradinhas_nao_alocadas']));
     }
 
     public function showFreeTime()
