@@ -16,16 +16,16 @@ class CompareEnrollments extends Command
                             {--json : Devolve a saída em JSON}
                             {--markdown : Devolve a saída em Markdown (para colar em e-mails com conversor MD)}
                             {--output= : Salva o relatório (amigável ou markdown) em um arquivo de texto}
-                            {--years=3 : Número de anos anteriores usados como baseline (média do mesmo período; default 3)}
+                            {--years=4 : Número de anos anteriores usados como baseline (média do mesmo período; default 4)}
                             {--tipo= : Filtra turmas pelo tipo (ex: "Graduação" ou "Pós Graduação")}
                             {--include-externa : Inclui turmas externas no comparativo (por padrão só internas)}
-                            {--min-drop=20 : Queda percentual mínima para marcar uma turma como subdimensionada}
-                            {--min-enrollment=5 : Ignora pares cuja baseline média seja menor que este valor}
+                            {--min-drop=10 : Variação percentual mínima (em módulo) para destacar uma turma como sub ou superdimensionada (default 10)}
+                            {--min-enrollment=0 : Ignora pares cuja baseline média seja menor que este valor}
                             {--year= : Ano do semestre atual (default: período mais recente)}
                             {--period= : Período do semestre atual (ex: "1° Semestre"; default: mais recente)}
                             {--omit-skipped : Não lista as turmas que tinham equivalente mas foram excluídas (estmtr nulo ou baseline < --min-enrollment)}';
 
-    protected $description = 'Compara o número de inscritos (estmtr) das turmas do semestre atual com as turmas equivalentes do(s) ano(s) anterior(es) (mesma disciplina + mesmo sufixo de turma), avaliando estatisticamente se estão subdimensionadas.';
+    protected $description = 'Compara o número de inscritos (estmtr) das turmas do semestre atual com as turmas equivalentes do(s) ano(s) anterior(es) (mesma disciplina + mesmo sufixo de turma), avaliando estatisticamente se estão sub ou superdimensionadas.';
 
     public function handle()
     {
@@ -88,7 +88,7 @@ class CompareEnrollments extends Command
 
         $summary = $this->computeSummary($pairs, $options);
 
-        $ranking = $pairs->sortByDesc('drop_pct')
+        $ranking = $pairs->sortByDesc('deficit')
             ->when($options['top'] < 0, fn($c) => $c, fn($c) => $c->take($options['top']))
             ->values();
 
@@ -250,11 +250,12 @@ class CompareEnrollments extends Command
                 continue;
             }
 
+            $baselineAvg = round($baselineAvg);
             $currentEnrollment = (float) $current->estmtr;
             if ($baselineAvg > 0) {
-                $dropPct = ($baselineAvg - $currentEnrollment) / $baselineAvg * 100.0;
+                $variationPct = ($currentEnrollment - $baselineAvg) / $baselineAvg * 100.0;
             } else {
-                $dropPct = 0.0;
+                $variationPct = 0.0;
             }
             $deficit = $baselineAvg - $currentEnrollment;
 
@@ -266,10 +267,10 @@ class CompareEnrollments extends Command
                 'tipo' => $current->tiptur,
                 'externa' => (bool) $current->externa,
                 'current_enrollment' => $currentEnrollment,
-                'baseline_avg' => round($baselineAvg, 2),
+                'baseline_avg' => $baselineAvg,
                 'baseline_years' => $baselineDetail,
-                'drop_pct' => round($dropPct, 2),
-                'deficit' => round($deficit, 2),
+                'variation_pct' => round($variationPct, 2),
+                'deficit' => $deficit,
             ];
         }
 
@@ -376,26 +377,34 @@ class CompareEnrollments extends Command
                 'comparable_pairs' => 0,
                 'undersized_count' => 0,
                 'undersized_pct' => 0.0,
+                'oversized_count' => 0,
+                'oversized_pct' => 0.0,
                 'total_deficit' => 0.0,
-                'median_drop_pct' => 0.0,
-                'mean_drop_pct' => 0.0,
+                'total_surplus' => 0.0,
+                'median_variation_pct' => 0.0,
+                'mean_variation_pct' => 0.0,
                 'mean_abs_deficit' => 0.0,
             ];
         }
 
-        $undersized = $pairs->filter(fn($p) => $p['drop_pct'] >= $options['min_drop']);
-        $totalDeficit = $pairs->sum(fn($p) => $p['deficit']);
-        $medianDrop = $this->median($pairs->pluck('drop_pct')->all());
-        $meanDrop = $pairs->avg('drop_pct');
+        $undersized = $pairs->filter(fn($p) => $p['variation_pct'] <= -$options['min_drop']);
+        $oversized = $pairs->filter(fn($p) => $p['variation_pct'] >= $options['min_drop']);
+        $totalDeficit = $undersized->sum(fn($p) => $p['deficit']);
+        $totalSurplus = $oversized->sum(fn($p) => -$p['deficit']);
+        $medianVar = $this->median($pairs->pluck('variation_pct')->all());
+        $meanVar = $pairs->avg('variation_pct');
         $meanAbsDeficit = $pairs->avg(fn($p) => abs($p['deficit']));
 
         return [
             'comparable_pairs' => $n,
             'undersized_count' => $undersized->count(),
             'undersized_pct' => round($n > 0 ? ($undersized->count() / $n) * 100.0 : 0.0, 2),
+            'oversized_count' => $oversized->count(),
+            'oversized_pct' => round($n > 0 ? ($oversized->count() / $n) * 100.0 : 0.0, 2),
             'total_deficit' => round($totalDeficit, 2),
-            'median_drop_pct' => round($medianDrop, 2),
-            'mean_drop_pct' => round($meanDrop, 2),
+            'total_surplus' => round($totalSurplus, 2),
+            'median_variation_pct' => round($medianVar, 2),
+            'mean_variation_pct' => round($meanVar, 2),
             'mean_abs_deficit' => round($meanAbsDeficit, 2),
         ];
     }
@@ -472,12 +481,15 @@ class CompareEnrollments extends Command
         $out .= $line . "\n\n";
 
         $s = $payload['summary'];
+        $minDrop = $payload['options']['min_drop'];
         $out .= "[ RESUMO ESTATÍSTICO ]\n";
         $out .= "Pares comparáveis: {$s['comparable_pairs']}\n";
-        $out .= "Turmas subdimensionadas (queda >= {$payload['options']['min_drop']}%): {$s['undersized_count']} ({$s['undersized_pct']}%)\n";
-        $out .= "Deficit total estimado (soma baseline - atual): {$s['total_deficit']}\n";
-        $out .= "Mediana da queda (%): {$s['median_drop_pct']}\n";
-        $out .= "Média da queda (%): {$s['mean_drop_pct']}\n";
+        $out .= "Turmas subdimensionadas (variação <= -{$minDrop}%): {$s['undersized_count']} ({$s['undersized_pct']}%)\n";
+        $out .= "Turmas superdimensionadas (variação >= +{$minDrop}%): {$s['oversized_count']} ({$s['oversized_pct']}%)\n";
+        $out .= "Deficit total estimado (subdimensionadas): {$s['total_deficit']}\n";
+        $out .= "Excedente total estimado (superdimensionadas): {$s['total_surplus']}\n";
+        $out .= "Mediana da variação (%): {$s['median_variation_pct']}\n";
+        $out .= "Média da variação (%): {$s['mean_variation_pct']}\n";
         $out .= "Média do deficit absoluto: {$s['mean_abs_deficit']}\n\n";
 
         // Totais de turmas por semestre
@@ -531,11 +543,11 @@ class CompareEnrollments extends Command
         } else {
             $showing = $payload['options']['top'] < 0 ? 'TODOS' : $payload['options']['top'];
             $out .= "[ RANKING DOS PIORES CASOS (mostrando {$showing} de {$payload['ranking_total']}) ]\n";
-            $headers = ['Disciplina', 'Turma', 'Tipo', 'Insc. Atual', 'Baseline (média)', 'Anos base', 'Queda %', 'Deficit'];
+            $headers = ['Disciplina', 'Turma', 'Tipo', 'Insc. Atual', 'Baseline (média)', 'Anos base', 'Variação', 'Deficit'];
             $rows = [];
             foreach ($ranking as $item) {
                 $yearsBase = collect($item['baseline_years'])->map(fn($y) => (string)$y['year'] . ':' . ($y['enrollment'] ?? '-'))->implode(' | ');
-                $drop = $item['drop_pct'] >= $payload['options']['min_drop'] ? "!" . $item['drop_pct'] : (string)$item['drop_pct'];
+                $varCell = sprintf('%+.2f', $item['variation_pct']);
                 $rows[] = [
                     $item['coddis'],
                     $item['suffix'] !== '' ? $item['suffix'] : $item['codtur'],
@@ -543,7 +555,7 @@ class CompareEnrollments extends Command
                     $item['current_enrollment'],
                     $item['baseline_avg'],
                     $yearsBase,
-                    $drop,
+                    $varCell,
                     $item['deficit'],
                 ];
             }
@@ -607,13 +619,16 @@ class CompareEnrollments extends Command
         // Resumo estatístico
         $s = $payload['summary'];
 
+        $minDrop = $payload['options']['min_drop'];
         $out .= "### Resumo estatístico\n\n";
         $out .= "| Métrica | Valor |\n|:---|---:|\n";
         $out .= "| Pares comparáveis | {$s['comparable_pairs']} |\n";
-        $out .= "| Turmas subdimensionadas (queda >= {$payload['options']['min_drop']}%) | {$s['undersized_count']} ({$s['undersized_pct']}%) |\n";
-        $out .= "| Deficit total estimado (baseline - atual) | {$s['total_deficit']} |\n";
-        $out .= "| Mediana da queda (%) | {$s['median_drop_pct']} |\n";
-        $out .= "| Média da queda (%) | {$s['mean_drop_pct']} |\n";
+        $out .= "| Turmas subdimensionadas (variação <= -{$minDrop}%) | {$s['undersized_count']} ({$s['undersized_pct']}%) |\n";
+        $out .= "| Turmas superdimensionadas (variação >= +{$minDrop}%) | {$s['oversized_count']} ({$s['oversized_pct']}%) |\n";
+        $out .= "| Deficit total estimado (subdimensionadas) | {$s['total_deficit']} |\n";
+        $out .= "| Excedente total estimado (superdimensionadas) | {$s['total_surplus']} |\n";
+        $out .= "| Mediana da variação (%) | {$s['median_variation_pct']} |\n";
+        $out .= "| Média da variação (%) | {$s['mean_variation_pct']} |\n";
         $out .= "| Média do deficit absoluto | {$s['mean_abs_deficit']} |\n\n";
 
         // Totais de turmas por semestre
@@ -647,11 +662,11 @@ class CompareEnrollments extends Command
         } elseif ($payload['ranking_total'] > 0) {
             $showing = $topVal < 0 ? 'TODOS' : $topVal;
             $out .= "### Ranking dos piores casos (mostrando {$showing} de {$payload['ranking_total']})\n\n";
-            $out .= "| Disciplina | Turma | Tipo | Insc. Atual | Baseline (média) | Anos base | Queda % | Deficit |\n";
+            $out .= "| Disciplina | Turma | Tipo | Insc. Atual | Baseline (média) | Anos base | Variação | Deficit |\n";
             $out .= "|:--|:--|:--|--:|--:|:--|--:|--:|\n";
             foreach ($ranking as $item) {
                 $yearsBase = collect($item['baseline_years'])->map(fn($y) => (string)$y['year'] . ':' . ($y['enrollment'] ?? '-'))->implode(' / ');
-                $drop = $item['drop_pct'] >= $payload['options']['min_drop'] ? "**{$item['drop_pct']}** ⚠️" : (string)$item['drop_pct'];
+                $drop = sprintf('%+.2f', $item['variation_pct']);
                 $turma = $item['suffix'] !== '' ? $item['suffix'] : $item['codtur'];
                 $out .= "| {$item['coddis']} | {$turma} | {$item['tipo']} | {$item['current_enrollment']} | {$item['baseline_avg']} | {$yearsBase} | {$drop} | {$item['deficit']} |\n";
             }
