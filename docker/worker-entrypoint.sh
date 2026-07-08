@@ -29,4 +29,4 @@ echo "[worker] MySQL pronto. Iniciando queue:listen..."
 # Usa queue:listen em vez de queue:work para desenvolvimento: o listen
 # relê o código a cada job, então mudanças nos arquivos PHP entram em
 # vigor sem precisar reiniciar o container.
-exec gosu "${LARAVEL_USER}" php artisan queue:listen --tries=3 --sleep=3
+exec gosu "${LARAVEL_USER}" php artisan queue:listen --tries=3 --sleep=3 --timeout=999
