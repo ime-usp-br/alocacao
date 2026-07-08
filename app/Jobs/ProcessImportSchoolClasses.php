@@ -41,6 +41,11 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
 
     public $timeout = 999;
 
+    public function uniqueFor()
+    {
+        return 3600;
+    }
+
     /**
      * Execute the job.
      *
@@ -153,22 +158,66 @@ class ProcessImportSchoolClasses implements ShouldQueue, ShouldBeUnique
             $this->queueProgress(10 + floor($n*70/$t));
         }
 
+        $toleranciaMinutos = 20;
+
         $schoolclasses = SchoolClass::whereBelongsTo($schoolterm)->get();
         $schoolclasses = $schoolclasses->filter(function($schoolclass){
-            if(count($schoolclass->classschedules)>1 and count($schoolclass->classschedules->pluck("diasmnocp")->unique()->toArray())==1){
-                return true;
-            }
-            return false;
+            $porDia = $schoolclass->classschedules->groupBy("diasmnocp");
+            return $porDia->contains(function($schedulesDoDia){
+                return $schedulesDoDia->count() > 1;
+            });
         });
 
         foreach($schoolclasses as $schoolclass){
-            $schedules = $schoolclass->classschedules;
+            $schedulesAtuais = $schoolclass->classschedules;
             $schoolclass->classschedules()->detach();
-            $schoolclass->classschedules()->attach(ClassSchedule::firstOrCreate([
-                "diasmnocp"=>$schedules->pluck("diasmnocp")[0],
-                "horent"=>$schedules->pluck("horent")->min(),
-                "horsai"=>$schedules->pluck("horsai")->max()
-            ]));
+
+            $porDia = $schedulesAtuais->groupBy("diasmnocp");
+
+            foreach($porDia as $diasmnocp => $schedulesDoDia){
+                $schedulesDoDia = $schedulesDoDia->sortBy("horent")->values();
+
+                $blocos = collect();
+                $blocoAtual = null;
+
+                foreach($schedulesDoDia as $schedule){
+                    if($blocoAtual === null){
+                        $blocoAtual = [
+                            "diasmnocp" => $schedule->diasmnocp,
+                            "horent" => $schedule->horent,
+                            "horsai" => $schedule->horsai,
+                        ];
+                        continue;
+                    }
+
+                    $fimAtual = strtotime($blocoAtual["horsai"]);
+                    $inicioProximo = strtotime($schedule->horent);
+                    $gapMinutos = ($inicioProximo - $fimAtual) / 60;
+
+                    if($gapMinutos <= $toleranciaMinutos){
+                        if(strtotime($schedule->horsai) > strtotime($blocoAtual["horsai"])){
+                            $blocoAtual["horsai"] = $schedule->horsai;
+                        }
+                        if(strtotime($schedule->horent) < strtotime($blocoAtual["horent"])){
+                            $blocoAtual["horent"] = $schedule->horent;
+                        }
+                    } else {
+                        $blocos->push($blocoAtual);
+                        $blocoAtual = [
+                            "diasmnocp" => $schedule->diasmnocp,
+                            "horent" => $schedule->horent,
+                            "horsai" => $schedule->horsai,
+                        ];
+                    }
+                }
+                if($blocoAtual !== null){
+                    $blocos->push($blocoAtual);
+                }
+
+                foreach($blocos as $bloco){
+                    $schoolclass->classschedules()->attach(ClassSchedule::firstOrCreate($bloco));
+                }
+            }
         }
 
         $schoolclasses = SchoolClass::whereBelongsTo($schoolterm)->where("tiptur", "Graduação")->get();

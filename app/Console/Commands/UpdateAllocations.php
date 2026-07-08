@@ -212,17 +212,62 @@ class UpdateAllocations extends Command
 
         foreach ($schoolClassesList as $schoolclass) {
             try {
-                if (count($schoolclass->classschedules) > 1 and count($schoolclass->classschedules->pluck("diasmnocp")->unique()->toArray()) == 1) {
-                    $schedules = $schoolclass->classschedules;
+                $toleranciaMinutos = 20;
+                $porDia = $schoolclass->classschedules->groupBy("diasmnocp");
+                $precisaMerge = $porDia->contains(function($schedulesDoDia){
+                    return $schedulesDoDia->count() > 1;
+                });
+
+                if ($precisaMerge) {
+                    $schedulesAtuais = $schoolclass->classschedules;
                     $schoolclass->classschedules()->detach();
-                    
-                    // Nota: O método firstOrCreate pode falhar se dados forem nulos, adicionar proteção se necessário
-                    // Mas mantendo fiel ao Job original:
-                    $schoolclass->classschedules()->attach(ClassSchedule::firstOrCreate([
-                        "diasmnocp" => $schedules->pluck("diasmnocp")[0],
-                        "horent" => $schedules->pluck("horent")->min(),
-                        "horsai" => $schedules->pluck("horsai")->max()
-                    ]));
+
+                    $porDia = $schedulesAtuais->groupBy("diasmnocp");
+
+                    foreach($porDia as $diasmnocp => $schedulesDoDia){
+                        $schedulesDoDia = $schedulesDoDia->sortBy("horent")->values();
+
+                        $blocos = collect();
+                        $blocoAtual = null;
+
+                        foreach($schedulesDoDia as $schedule){
+                            if($blocoAtual === null){
+                                $blocoAtual = [
+                                    "diasmnocp" => $schedule->diasmnocp,
+                                    "horent" => $schedule->horent,
+                                    "horsai" => $schedule->horsai,
+                                ];
+                                continue;
+                            }
+
+                            $fimAtual = strtotime($blocoAtual["horsai"]);
+                            $inicioProximo = strtotime($schedule->horent);
+                            $gapMinutos = ($inicioProximo - $fimAtual) / 60;
+
+                            if($gapMinutos <= $toleranciaMinutos){
+                                if(strtotime($schedule->horsai) > strtotime($blocoAtual["horsai"])){
+                                    $blocoAtual["horsai"] = $schedule->horsai;
+                                }
+                                if(strtotime($schedule->horent) < strtotime($blocoAtual["horent"])){
+                                    $blocoAtual["horent"] = $schedule->horent;
+                                }
+                            } else {
+                                $blocos->push($blocoAtual);
+                                $blocoAtual = [
+                                    "diasmnocp" => $schedule->diasmnocp,
+                                    "horent" => $schedule->horent,
+                                    "horsai" => $schedule->horsai,
+                                ];
+                            }
+                        }
+                        if($blocoAtual !== null){
+                            $blocos->push($blocoAtual);
+                        }
+
+                        foreach($blocos as $bloco){
+                            $schoolclass->classschedules()->attach(ClassSchedule::firstOrCreate($bloco));
+                        }
+                    }
                 }
             } catch (\Exception $e) {
                 // Silencioso ou logar se necessário
