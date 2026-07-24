@@ -22,7 +22,7 @@ class ReportSemesterDiscrepancies extends Command
      *
      * @var string
      */
-    protected $description = 'Relata disciplinas que mudaram de status (Interna/Externa) entre o semestre atual e o anterior.';
+    protected $description = 'Relata disciplinas que mudaram de status (Interna/Externa) entre o semestre atual e o anterior e turmas históricas ausentes (oferecidas no ano base e não cadastradas no semestre atual).';
 
     /**
      * Executa o comando do console.
@@ -47,7 +47,7 @@ class ReportSemesterDiscrepancies extends Command
             return Command::FAILURE;
         }
 
-        $this->displayHeader("Análise de Mudanças de Status: {$currentSchoolTerm->period} de {$currentSchoolTerm->year} vs {$previousSchoolTerm->period} de {$previousSchoolTerm->year}");
+        $this->displayHeader("Análise de Discrepâncias: {$currentSchoolTerm->period} de {$currentSchoolTerm->year} vs {$previousSchoolTerm->period} de {$previousSchoolTerm->year}");
         
         $progressBar = $this->output->createProgressBar(2);
         $progressBar->setFormat("Buscando dados: [%bar%] %percent:3s%%");
@@ -61,10 +61,29 @@ class ReportSemesterDiscrepancies extends Command
         $this->newLine(2);
         
         $statusChanges = $this->findStatusChanges($currentClasses, $previousClasses);
-        
-        $this->renderReport($statusChanges);
+        $missingClasses = $this->findMissingClasses($currentClasses, $previousClasses);
+
+        $this->renderStatusChanges($statusChanges);
+        $this->renderMissingClasses($missingClasses, $previousSchoolTerm, $currentSchoolTerm);
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Encontra turmas oferecidas no ano base (semestre anterior) que não têm correspondente no semestre atual.
+     */
+    private function findMissingClasses(Collection $currentClasses, Collection $previousClasses): Collection
+    {
+        $currentClassesByKey = $currentClasses->keyBy(fn($class) => $this->getSchoolClassKey($class));
+
+        return $previousClasses
+            ->where('externa', false)
+            ->where('tiptur', '!=', 'Pós Graduação')
+            ->reject(fn($previous) => str_contains($previous->coddis, '*'))
+            ->reject(fn($previous) => str_contains($previous->codtur, '*'))
+            ->reject(fn($previous) => $currentClassesByKey->has($this->getSchoolClassKey($previous)))
+            ->sortBy([['coddis', 'asc'], ['codtur', 'asc']])
+            ->values();
     }
 
     /**
@@ -95,29 +114,65 @@ class ReportSemesterDiscrepancies extends Command
     }
     
     /**
-     * Renderiza o relatório final na tela.
+     * Renderiza a seção de mudanças de status (Interna/Externa).
      */
-    private function renderReport(Collection $changes)
+    private function renderStatusChanges(Collection $changes)
     {
+        $this->line('');
+        $this->warn("[ SEÇÃO 1: MUDANÇAS DE STATUS IDENTIFICADAS ({$changes->count()}) ]");
+        $this->line(str_repeat('-', 50));
+
         if ($changes->isEmpty()) {
             $this->info('Nenhuma disciplina mudou de status entre Interna e Externa.');
             return;
         }
 
-        $this->line('');
-        $this->warn("[!] MUDANÇAS DE STATUS IDENTIFICADAS ({$changes->count()})");
-        $this->line(str_repeat('-', 50));
-
         $headers = ['Código Disciplina', 'Turma', 'Nome da Disciplina', 'Status Anterior', 'Status Atual'];
         $rows = $changes->map(fn($change) => [
             $change['class']->coddis,
-            $change['class']->codtur, // <-- Coluna adicionada aqui
+            $change['class']->codtur,
             Str::limit($change['class']->nomdis, 50),
             $change['from'],
             $change['to'],
         ]);
 
         $this->table($headers, $rows);
+    }
+
+    /**
+     * Renderiza a seção de turmas históricas ausentes (oferecidas no ano base e não cadastradas no atual).
+     */
+    private function renderMissingClasses(Collection $missing, SchoolTerm $previousSchoolTerm, SchoolTerm $currentSchoolTerm)
+    {
+        $subtitle = "Oferecidas em {$previousSchoolTerm->year}/" . ($previousSchoolTerm->period === '1° Semestre' ? '1' : '2') 
+            . " e não criadas em {$currentSchoolTerm->year}/" . ($currentSchoolTerm->period === '1° Semestre' ? '1' : '2');
+
+        $this->line('');
+        $this->warn("[ SEÇÃO 2: TURMAS HISTÓRICAS AUSENTES ({$missing->count()}) ]");
+        $this->line($subtitle);
+        $this->line(str_repeat('-', 50));
+
+        if ($missing->isEmpty()) {
+            $this->info('Todas as turmas do ano base foram cadastradas no semestre atual.');
+            return;
+        }
+
+        $headers = ['Disciplina', 'Turma', 'Nome da Disciplina', 'Inscritos no Ano Base'];
+        $rows = $missing->map(fn($class) => [
+            $class->coddis,
+            substr($class->codtur, -2),
+            Str::limit($class->nomdis, 50),
+            $class->estmtr ?? '—',
+        ]);
+
+        $this->table($headers, $rows);
+
+        $this->newLine();
+        $this->line('-------------------------------------------------------------------');
+        $this->info(sprintf(
+            "Resumo: %d turmas ausentes no semestre atual comparadas ao ano base.",
+            $missing->count()
+        ));
     }
 
     // MÉTODOS AUXILIARES
