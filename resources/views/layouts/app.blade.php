@@ -6,8 +6,8 @@
 
 @section('styles')
   @parent
-    <link rel="stylesheet" href="{{ asset('css/app.css') }}" />
-    <link rel="stylesheet" href="{{ asset('css/listmenu_v.css') }}" />
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ filemtime(public_path('css/app.css')) }}" />
+    <link rel="stylesheet" href="{{ asset('css/listmenu_v.css') }}?v={{ filemtime(public_path('css/listmenu_v.css')) }}" />
 @endsection
 
 @section('javascripts_bottom')
