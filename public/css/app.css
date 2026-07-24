@@ -119,9 +119,27 @@
 	padding-top: 10px;
 }
 
+/* Sem menu lateral (usuário não logado), o conteúdo ocupa toda a largura.
+   Quando o menu existe, reservamos o espaço à esquerda em telas largas. */
 #layout_conteudo {
-  padding-left: 181px;
   padding-top: 10px;
+}
+
+body:has(#layout_menu) #layout_conteudo {
+  padding-left: 181px;
+}
+
+/* Em telas pequenas, esconde o menu lateral fixo (a navbar do theme
+   continua disponível) e o conteúdo ocupa a largura toda. */
+@media (max-width: 767.98px) {
+  #layout_menu {
+    display: none;
+  }
+
+  #layout_conteudo,
+  body:has(#layout_menu) #layout_conteudo {
+    padding-left: 0;
+  }
 }
 
 #my_web_cabecalho {
