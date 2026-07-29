@@ -7,6 +7,7 @@ use App\Models\SchoolTerm;
 use App\Models\SolverLog;
 use App\Services\RoomAllocationPayloadBuilder;
 use App\Services\AllocationStateService;
+use App\Services\SkuldPredictionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,6 +26,7 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     public array $roomIds;
     public array $solverConfig;
     public bool $syncEnrollment;
+    public bool $useSkuldPrediction;
 
     public int $timeout = 60;
     public int $tries = 3;
@@ -33,12 +35,13 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     /**
      * Create a new job instance.
      */
-    public function __construct(int $schoolTermId, array $roomIds, array $solverConfig = [], bool $syncEnrollment = false)
+    public function __construct(int $schoolTermId, array $roomIds, array $solverConfig = [], bool $syncEnrollment = false, bool $useSkuldPrediction = false)
     {
         $this->schoolTermId = $schoolTermId;
         $this->roomIds = $roomIds;
         $this->solverConfig = $solverConfig;
         $this->syncEnrollment = $syncEnrollment;
+        $this->useSkuldPrediction = $useSkuldPrediction;
     }
 
     /**
@@ -70,7 +73,8 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
                 });
         }
 
-        $payload = (new RoomAllocationPayloadBuilder())->build($term, $this->roomIds, $this->solverConfig);
+        $payload = (new RoomAllocationPayloadBuilder())
+            ->build($term, $this->roomIds, $this->solverConfig, $this->resolveSkuldPredicoes($term));
 
         $solverUrl = rtrim(config('alocacao.solver.url'), '/');
         $apiToken = config('alocacao.solver.api_token');
@@ -169,5 +173,32 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
             'school_term_id' => $this->schoolTermId,
             'job_id' => $jobId,
         ]);
+    }
+
+    /**
+     * Resolve as predições do Skuld para o semestre, forçando a estimativa
+     * histórica de calouros para 'none' (o Skuld passa a ser a fonte de
+     * inferência do estmtr). O estmtr do banco local NÃO é sobrescrito.
+     *
+     * @return array<string, int> Mapa coddis|codtur => estmtr previsto.
+     */
+    private function resolveSkuldPredicoes(SchoolTerm $term): array
+    {
+        if (! $this->useSkuldPrediction) {
+            return [];
+        }
+
+        // Trava a estimativa histórica de calouros como desligada, mesmo que o
+        // Skuld esteja indisponível ou retorne vazio.
+        $this->solverConfig['historical_estimation_method'] = 'none';
+
+        $predicoes = (new SkuldPredictionService())->predict($term);
+
+        Log::info('ProcessRoomDistribution: skuld predictions resolved', [
+            'school_term_id' => $this->schoolTermId,
+            'skuld_predictions' => count($predicoes),
+        ]);
+
+        return $predicoes;
     }
 }

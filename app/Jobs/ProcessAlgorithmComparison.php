@@ -9,6 +9,7 @@ use App\Services\AllocationEvaluatorService;
 use App\Services\AllocationStateService;
 use App\Services\ComparisonAllocationCollector;
 use App\Services\RoomAllocationPayloadBuilder;
+use App\Services\SkuldPredictionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,6 +30,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
     public int $baseAllocationStateId;
     public array $roomIds;
     public array $solverConfig;
+    public bool $useSkuldPrediction;
 
     public ?int $comparisonReportId = null;
 
@@ -41,12 +43,13 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         return 1;
     }
 
-    public function __construct(int $schoolTermId, int $baseAllocationStateId, array $roomIds, array $solverConfig = [])
+    public function __construct(int $schoolTermId, int $baseAllocationStateId, array $roomIds, array $solverConfig = [], bool $useSkuldPrediction = false)
     {
         $this->schoolTermId = $schoolTermId;
         $this->baseAllocationStateId = $baseAllocationStateId;
         $this->roomIds = $roomIds;
         $this->solverConfig = $solverConfig;
+        $this->useSkuldPrediction = $useSkuldPrediction;
     }
 
     public function uniqueId(): string
@@ -62,7 +65,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
         $report = ComparisonReport::create([
             'school_term_id' => $term->id,
             'base_allocation_state_id' => $baseState->id,
-            'solver_config' => $this->solverConfig,
+            'solver_config' => $this->resolveSkuldSolverConfig(),
             'status' => 'processing',
         ]);
         $this->comparisonReportId = $report->id;
@@ -98,7 +101,7 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             //    heuristica legada. A construcao e pura (leituras), logo o
             //    rollback posterior nao afeta o array em memoria.
             $solverPayload = (new RoomAllocationPayloadBuilder())
-                ->build($term, $this->roomIds, $this->solverConfig);
+                ->build($term, $this->roomIds, $this->resolveSkuldSolverConfig(), $this->resolveSkuldPredicoes($term));
 
             // 3. Executa a heuristica legada sincronamente dentro do
             //    contexto transacional. Suas escritas em school_classes
@@ -307,5 +310,45 @@ class ProcessAlgorithmComparison implements ShouldQueue, ShouldBeUnique
             'base_allocation_state_id' => $this->baseAllocationStateId,
             'error' => $exception->getMessage(),
         ]);
+    }
+
+    /**
+     * Resolve as predições do Skuld para o semestre (mapa coddis|codtur =>
+     * estmtr). Retorna vazio quando a previsão está desativada. O estmtr do
+     * banco local NÃO é sobrescrito.
+     *
+     * @return array<string, int>
+     */
+    private function resolveSkuldPredicoes(SchoolTerm $term): array
+    {
+        if (! $this->useSkuldPrediction) {
+            return [];
+        }
+
+        $predicoes = (new SkuldPredictionService())->predict($term);
+
+        Log::info('ProcessAlgorithmComparison: skuld predictions resolved', [
+            'school_term_id' => $this->schoolTermId,
+            'skuld_predictions' => count($predicoes),
+        ]);
+
+        return $predicoes;
+    }
+
+    /**
+     * Retorna o solverConfig com a estimativa histórica de calouros forçada
+     * para 'none' quando a previsão do Skuld está ativa. O Skuld passa a ser
+     * a fonte de inferência do estmtr.
+     */
+    private function resolveSkuldSolverConfig(): array
+    {
+        if (! $this->useSkuldPrediction) {
+            return $this->solverConfig;
+        }
+
+        $config = $this->solverConfig;
+        $config['historical_estimation_method'] = 'none';
+
+        return $config;
     }
 }

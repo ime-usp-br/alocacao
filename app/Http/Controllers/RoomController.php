@@ -388,7 +388,8 @@ class RoomController extends Controller
                 $schoolterm->id,
                 $baseState->id,
                 $validated['rooms_id'],
-                $validated['solver_config'] ?? []
+                $validated['solver_config'] ?? [],
+                (bool) ($validated['use_skuld_prediction'] ?? false)
             );
 
             Session::put("alert-info", "Comparação de algoritmos iniciada. A distribuição de produção não será alterada. Acompanhe o resultado em /comparison-reports.");
@@ -433,7 +434,8 @@ class RoomController extends Controller
             $schoolterm->id,
             $validated['rooms_id'],
             $validated['solver_config'] ?? [],
-            (bool) ($validated['sync_enrollment'] ?? false)
+            (bool) ($validated['sync_enrollment'] ?? false),
+            (bool) ($validated['use_skuld_prediction'] ?? false)
         );
 
         Session::put("alert-info", "A distribuição de salas foi iniciada. Aguarde a conclusão no botão abaixo.");

@@ -56,6 +56,7 @@ class DistributesRoomRequest extends FormRequest
             'use_legacy' => 'nullable|boolean',
             'compare_algorithms' => 'nullable|boolean',
             'base_allocation_state_id' => 'nullable|integer|exists:allocation_states,id',
+            'use_skuld_prediction' => 'nullable|boolean',
 
             'rooms_id' => 'required|array',
             'rooms_id.*' => 'required|numeric',

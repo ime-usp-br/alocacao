@@ -13,6 +13,13 @@ class RoomAllocationPayloadBuilder
     private HistoricalEnrollmentService $historicalService;
     private bool $usesInjectedHistoricalService;
 
+    /**
+     * Predições do Skuld (coddis|codtur => estmtr) que substituem o estmtr
+     * APENAS no payload do solver, sem tocar o banco local. Populado em
+     * build() quando o usuário ativa a previsão no modal de disparo.
+     */
+    private array $skuldPredicoes = [];
+
     public function __construct(?HistoricalEnrollmentService $historicalService = null)
     {
         $this->usesInjectedHistoricalService = $historicalService !== null;
@@ -33,11 +40,16 @@ class RoomAllocationPayloadBuilder
      * @param SchoolTerm $schoolTerm Semestre letivo alvo.
      * @param array<int> $roomIds IDs das salas disponiveis para alocacao.
      * @param array<string, mixed> $overrides Sobrescritas para o bloco config (opcional).
+     * @param array<string, int> $skuldPredicoes Predicoes do Skuld (coddis|codtur => estmtr)
+     *        que substituem o estmtr APENAS no payload, sem tocar o banco local. Quando
+     *        nao-vazio, forca historical_estimation_method = 'none' (o Skuld passa a ser
+     *        a fonte de inferencia do estmtr).
      * @return array<string, mixed> Array estruturado pronto para json_encode.
      */
-    public function build(SchoolTerm $schoolTerm, array $roomIds, array $overrides = []): array
+    public function build(SchoolTerm $schoolTerm, array $roomIds, array $overrides = [], array $skuldPredicoes = []): array
     {
         $roomIds = array_map('intval', $roomIds);
+        $this->skuldPredicoes = $skuldPredicoes;
 
         if (! $this->usesInjectedHistoricalService) {
             $historicalOverrides = array_filter([
@@ -48,6 +60,14 @@ class RoomAllocationPayloadBuilder
                 'historical_cap' => isset($overrides['historical_cap']) ? (int) $overrides['historical_cap'] : null,
                 'historical_stddev_multiplier' => isset($overrides['historical_stddev_multiplier']) ? (float) $overrides['historical_stddev_multiplier'] : null,
             ], fn ($value) => $value !== null);
+
+            // Quando o Skuld esta ativo, a estimativa historica de calouros
+            // fica DESLIGADA (method = 'none'): o Skuld passa a ser a fonte de
+            // inferencia do estmtr. As turmas sem predicao do Skuld usam o
+            // estmtr puro do banco.
+            if (! empty($this->skuldPredicoes)) {
+                $historicalOverrides['historical_estimation_method'] = 'none';
+            }
 
             $this->historicalService = new HistoricalEnrollmentService($historicalOverrides);
         }
@@ -232,7 +252,19 @@ class RoomAllocationPayloadBuilder
 
         foreach ($classes as $class) {
             $adjusted = $this->historicalService->calculateAdjustedDemand($class);
-            $adjustedDemands[] = (int) $adjusted['demand'];
+            $demandValue = (int) $adjusted['demand'];
+
+            // A predicao do Skuld (quando presente) prevalece sobre qualquer
+            // estimativa: substitui o estmtr APENAS no payload, sem tocar o
+            // banco local. Quando o Skuld esta ativo, a estimativa historica ja
+            // foi forçada para 'none' em build(), logo $adjusted e o estmtr
+            // puro do banco.
+            $skuldKey = "{$class->coddis}|{$class->codtur}";
+            if (! empty($this->skuldPredicoes) && array_key_exists($skuldKey, $this->skuldPredicoes)) {
+                $demandValue = (int) $this->skuldPredicoes[$skuldKey];
+            }
+
+            $adjustedDemands[] = $demandValue;
 
             if ($adjusted['applied']) {
                 $historicalAdjustmentApplied = true;

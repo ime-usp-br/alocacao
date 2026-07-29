@@ -266,6 +266,7 @@
 $tooltips = [
     'strict_capacity' => 'Quando ativada, o solver não pode alocar turmas em salas com capacidade menor que a demanda.',
     'sync_enrollment' => 'Atualiza o número de inscritos (estmtr) diretamente do Replicado antes de executar o solver.',
+    'use_skuld_prediction' => 'Consulta o microsserviço Skuld para inferir o estmtr real e o substitui APENAS no payload enviado ao solver (o estmtr do banco local não é sobrescrito). Quando ativo, desativa automaticamente a estimativa histórica de calouros, pois o Skuld passa a ser a fonte de inferência.',
     'block_b_restriction_for_pos' => 'Quando ativada, pós-graduação não pode ser alocada no Bloco B.',
     'block_a_restriction_for_freshmen' => 'Quando ativada, calouros do IME devem ser alocados no Bloco A.',
     'undergrad_in_block_a_penalty' => 'Penalidade aplicada ao alocar graduação no Bloco A (deveria ser preferencialmente no Bloco B).',
@@ -415,6 +416,18 @@ $tooltips = [
                         <label class="custom-control-label font-weight-bold" for="sync_enrollment"
                             data-toggle="tooltip" data-placement="top" title="{{ $tooltips['sync_enrollment'] }}">
                             Atualizar inscritos (Replicado)
+                        </label>
+                    </div>
+                </div>
+                <div class="p-3 border-left border-right border-bottom rounded-bottom mt-2">
+                    <div class="custom-control custom-switch">
+                        <input type="hidden" name="use_skuld_prediction" value="0" form="distributesForm">
+                        <input type="checkbox" class="custom-control-input" id="use_skuld_prediction"
+                            name="use_skuld_prediction" value="1"
+                            form="distributesForm">
+                        <label class="custom-control-label font-weight-bold" for="use_skuld_prediction"
+                            data-toggle="tooltip" data-placement="top" title="{{ $tooltips['use_skuld_prediction'] }}">
+                            Previsão de inscritos (Skuld)
                         </label>
                     </div>
                 </div>
@@ -883,6 +896,25 @@ $( function() {
     $('#use_legacy').on('change', toggleLegacyMode);
     $('#compare_algorithms').on('change', toggleCompareMode);
     toggleLegacyMode();
+
+    function toggleSkuldMode() {
+        var skuld = $('#use_skuld_prediction').is(':checked');
+        var methodSelect = $('select[name="solver_config[historical_estimation_method]"]');
+        var histFields = $('#tab-estimativa input[name^="solver_config[historical_"]');
+
+        if (skuld) {
+            methodSelect.val('none').prop('disabled', true);
+            histFields.prop('disabled', true);
+            $('#tab-estimativa-link').append(' <small class="text-muted">(desativada pelo Skuld)</small>');
+        } else {
+            methodSelect.prop('disabled', false);
+            histFields.prop('disabled', false);
+            $('#tab-estimativa-link small').remove();
+        }
+    }
+
+    $('#use_skuld_prediction').on('change', toggleSkuldMode);
+    toggleSkuldMode();
 
     $('#distributesForm').on('submit', function(e) {
         var compare = $('#compare_algorithms').is(':checked');

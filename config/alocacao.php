@@ -83,4 +83,19 @@ return [
         'timeout' => (int) env('ALOCACAO_SOLVER_TIMEOUT', 60),
         'verify_ssl' => (bool) env('ALOCACAO_SOLVER_VERIFY_SSL', true),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Microsserviço preditivo Skuld (https://skuld.dos.ime.usp.br).
+    | Usado para inferir o estmtr real que será enviado ao solver, sem
+    | sobrescrever o estmtr persistido no banco local. Apenas as turmas
+    | retornadas pelo /api/v1/predict têm o estmtr substituído no payload.
+    |--------------------------------------------------------------------------
+    */
+    'skuld' => [
+        'url' => env('SKULD_URL', 'https://skuld.dos.ime.usp.br'),
+        'api_version' => env('SKULD_API_VERSION', 'v1'),
+        'timeout' => (int) env('SKULD_TIMEOUT', 120),
+        'verify_ssl' => (bool) env('SKULD_VERIFY_SSL', true),
+    ],
 ];
