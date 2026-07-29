@@ -64,11 +64,16 @@ class RoomController extends Controller
             ->sortBy("coddis");
 
         $dobradinhas_nao_alocadas = Fusion::whereHas("schoolclasses", function ($query) use ($st) {
-            $query->whereBelongsTo($st);
+            $query->whereBelongsTo($st)->where("externa", false);
         })->whereHas("master", function ($query) {
-            $query->whereDoesntHave("room");
-        })->with(['master.classschedules', 'master.fusion.schoolclasses', 'schoolclasses'])
-          ->get();
+            $query->whereDoesntHave("room")->where("externa", false);
+        })->with([
+            'master.classschedules',
+            'master.fusion.schoolclasses',
+            'schoolclasses' => function ($q) { $q->where("externa", false); },
+        ])
+          ->get()
+          ->filter(fn ($f) => $f->schoolclasses->isNotEmpty());
 
         return view('rooms.index', compact(['salas', 'st', 'turmas_nao_alocadas', 'dobradinhas_nao_alocadas']));
     }
@@ -109,7 +114,11 @@ class RoomController extends Controller
         $st = SchoolTerm::getLatest();
 
         $room->load(['schoolclasses' => function ($query) use ($st) {
-            $query->whereBelongsTo($st)->with(['classschedules', 'fusion.schoolclasses']);
+            $query->whereBelongsTo($st)
+                  ->where('externa', false)
+                  ->with(['classschedules', 'fusion.schoolclasses' => function ($q) {
+                      $q->where('externa', false);
+                  }]);
         }]);
 
         $slots = [];
@@ -128,11 +137,17 @@ class RoomController extends Controller
             ->sortBy("coddis");
 
         $dobradinhas_nao_alocadas = Fusion::whereHas("schoolclasses", function ($query) use ($st) {
-            $query->whereBelongsTo($st);
+            $query->whereBelongsTo($st)->where("externa", false);
         })->whereHas("master", function ($query) {
-            $query->whereDoesntHave("room");
-        })->with(['master.classschedules', 'master.fusion.schoolclasses', 'schoolclasses', 'schoolclasses.instructors'])
-          ->get();
+            $query->whereDoesntHave("room")->where("externa", false);
+        })->with([
+            'master.classschedules',
+            'master.fusion.schoolclasses',
+            'schoolclasses' => function ($q) { $q->where("externa", false); },
+            'schoolclasses.instructors',
+        ])
+          ->get()
+          ->filter(fn ($f) => $f->schoolclasses->isNotEmpty());
 
         return view('rooms.show', compact(['room', 'st', 'slots', 'turmas_nao_alocadas', 'dobradinhas_nao_alocadas']));
     }
@@ -218,11 +233,16 @@ class RoomController extends Controller
 
         // Unallocated fusions moved out of the Blade, with eager loading.
         $dobradinhas_nao_alocadas = Fusion::whereHas("schoolclasses", function ($query) use ($st){
-            $query->whereBelongsTo($st);
+            $query->whereBelongsTo($st)->where("externa", false);
         })->whereHas("master", function ($query){
-            $query->whereDoesntHave("room");
-        })->with(['master.classschedules', 'master.instructors', 'schoolclasses'])
-          ->get();
+            $query->whereDoesntHave("room")->where("externa", false);
+        })->with([
+            'master.classschedules',
+            'master.instructors',
+            'schoolclasses' => function ($q) { $q->where("externa", false); },
+        ])
+          ->get()
+          ->filter(fn ($f) => $f->schoolclasses->isNotEmpty());
 
         return view('rooms.showFreeTime', compact([
             "st",

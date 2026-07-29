@@ -115,39 +115,42 @@
                                                     rowspan={{array_search($classschedule->horsai, $horarios) - array_search($classschedule->horent, $horarios)}}>
                                                     @if($turma->fusion()->exists())
                                                         @php
+                                                            $filhas = $turma->fusion->schoolclasses->reject(fn ($sc) => $sc->externa)->values();
                                                             $dobradinha = "";
                                                             $label = "";
-                                                            $totalEstimado = $turma->fusion->schoolclasses->sum('estmtr');
+                                                            if($filhas->isNotEmpty()){
+                                                            $totalEstimado = $filhas->sum('estmtr');
                                                             $label .= "Total estimado de matriculados " . ($totalEstimado > 0 ? $totalEstimado : 'não disponível') . "\n";
-                                                            $nomdis = $turma->fusion->schoolclasses->pluck("nomdis")->unique()->toArray();
-                                                            if($turma->fusion->schoolclasses->pluck("coddis")->unique()->count() == 1){
-                                                                $dobradinha .= $turma->fusion->schoolclasses[0]->coddis." ";
-                                                                $label .= $turma->fusion->schoolclasses[0]->nomdis;
-                                                                foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
-                                                                    $dobradinha .= "T.".substr($turma->fusion->schoolclasses[$y]->codtur, -2, 2);
-                                                                    $dobradinha .= $y != count($turma->fusion->schoolclasses)-1 ? "/" : "";
+                                                            $nomdis = $filhas->pluck("nomdis")->unique()->toArray();
+                                                            if($filhas->pluck("coddis")->unique()->count() == 1){
+                                                                $dobradinha .= $filhas[0]->coddis." ";
+                                                                $label .= $filhas[0]->nomdis;
+                                                                foreach(range(0, count($filhas)-1) as $y){
+                                                                    $dobradinha .= "T.".substr($filhas[$y]->codtur, -2, 2);
+                                                                    $dobradinha .= $y != count($filhas)-1 ? "/" : "";
                                                                 }
                                                             }elseif(count($nomdis)==1 and in_array("Trabalho de Formatura", $nomdis)){
                                                                 $dobradinha .= "MAP20XX";
                                                                 $label .= "Trabalho de Formatura\n";
-                                                                foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
-                                                                    $label .= $turma->fusion->schoolclasses[$y]->coddis." T. ".$turma->fusion->schoolclasses[$y]->codtur;
-                                                                    $label .= $y != count($turma->fusion->schoolclasses)-1 ? "\n" : "";
+                                                                foreach(range(0, count($filhas)-1) as $y){
+                                                                    $label .= $filhas[$y]->coddis." T. ".$filhas[$y]->codtur;
+                                                                    $label .= $y != count($filhas)-1 ? "\n" : "";
                                                                 }
-                                                            }elseif($turma->fusion->schoolclasses()->where("tiptur","Graduação")->get()->count() == $turma->fusion->schoolclasses->count()){
-                                                                foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
-                                                                    $dobradinha .= $turma->fusion->schoolclasses[$y]->coddis." T.".substr($turma->fusion->schoolclasses[$y]->codtur, -2, 2);
-                                                                    $dobradinha .= $y != count($turma->fusion->schoolclasses)-1 ? "/" : "";
+                                                            }elseif($filhas->where("tiptur","Graduação")->count() == count($filhas)){
+                                                                foreach(range(0, count($filhas)-1) as $y){
+                                                                    $dobradinha .= $filhas[$y]->coddis." T.".substr($filhas[$y]->codtur, -2, 2);
+                                                                    $dobradinha .= $y != count($filhas)-1 ? "/" : "";
                                                                 }
 
                                                             }else{
-                                                                foreach(range(0, count($turma->fusion->schoolclasses)-1) as $y){
-                                                                    $dobradinha .= $turma->fusion->schoolclasses[$y]->coddis;
-                                                                    $dobradinha .= $y != count($turma->fusion->schoolclasses)-1 ? "/" : "";
-                                                                    $label .= $turma->fusion->schoolclasses[$y]->nomdis;
-                                                                    $label .= $y != count($turma->fusion->schoolclasses)-1 ? "\n" : "";
+                                                                foreach(range(0, count($filhas)-1) as $y){
+                                                                    $dobradinha .= $filhas[$y]->coddis;
+                                                                    $dobradinha .= $y != count($filhas)-1 ? "/" : "";
+                                                                    $label .= $filhas[$y]->nomdis;
+                                                                    $label .= $y != count($filhas)-1 ? "\n" : "";
                                                                 }
                                                                 $dobradinha .= " T.".substr($turma->codtur, -2, 2);
+                                                            }
                                                             }
                                                     
                                                         @endphp
