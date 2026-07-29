@@ -41,7 +41,7 @@
                         @endforeach
                     </table>
 
-                    @if($turmas_nao_alocadas)
+                    @if($turmas_nao_alocadas->isNotEmpty())
                     <br>
                     <h3 class='text-center mb-5'>Turmas não alocadas</h3>
 
