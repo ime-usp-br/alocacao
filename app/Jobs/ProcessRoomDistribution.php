@@ -28,7 +28,7 @@ class ProcessRoomDistribution implements ShouldQueue, ShouldBeUnique
     public bool $syncEnrollment;
     public bool $useSkuldPrediction;
 
-    public int $timeout = 60;
+    public int $timeout = 300;
     public int $tries = 3;
     public int $uniqueFor = 3600;
 
