@@ -30,7 +30,20 @@
                 $horarios = array_unique($horarios);
                 $dias_efetivos = array_unique($dias_efetivos);
 
-                sort($horarios, SORT_REGULAR);      
+                sort($horarios, SORT_REGULAR);
+
+                $coberto = [];
+                foreach($room->schoolclasses as $sc){
+                    foreach($sc->classschedules as $cs){
+                        $inicio = array_search($cs->horent, $horarios);
+                        $fim = array_search($cs->horsai, $horarios);
+                        if($inicio !== false && $fim !== false){
+                            for($j = $inicio + 1; $j < $fim; $j++){
+                                $coberto[$cs->diasmnocp][$horarios[$j]] = true;
+                            }
+                        }
+                    }
+                }
 
                 $dias = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];  
 
@@ -175,7 +188,9 @@
                                                 <td></td>    
                                             @endif
                                         @else
-                                            <td></td>                                                    
+                                            @if(empty($coberto[$dia][$horarios[$x]]))
+                                                <td></td>
+                                            @endif
                                         @endif
                                     @endforeach
                                 </tr>
