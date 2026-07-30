@@ -16,7 +16,7 @@ class CurriculumController extends Controller
     {
         if(!Auth::check()){
             return redirect("/login");
-        }elseif(!Auth::user()->hasRole(["Administrador", "Operador"])){
+        }elseif(!Auth::user()->canView()){
             abort(403);
         }
 
@@ -29,7 +29,7 @@ class CurriculumController extends Controller
     {
         if(!Auth::check()){
             return redirect("/login");
-        }elseif(!Auth::user()->hasRole(["Administrador", "Operador"])){
+        }elseif(!Auth::user()->canView()){
             abort(403);
         }
 
@@ -52,7 +52,7 @@ class CurriculumController extends Controller
     {
         if(!Auth::check()){
             return redirect("/login");
-        }elseif(!Auth::user()->hasRole(["Administrador", "Operador"])){
+        }elseif(!Auth::user()->canView()){
             abort(403);
         }
 

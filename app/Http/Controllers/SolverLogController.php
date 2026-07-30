@@ -14,7 +14,7 @@ class SolverLogController extends Controller
      */
     public function index(Request $request)
     {
-        if (! Auth::check() || ! Auth::user()->hasRole('Administrador')) {
+        if (! Auth::check() || ! Auth::user()->hasRole(['Administrador', 'Observador'])) {
             abort(403);
         }
 
@@ -31,7 +31,7 @@ class SolverLogController extends Controller
      */
     public function show($id)
     {
-        if (! Auth::check() || ! Auth::user()->hasRole('Administrador')) {
+        if (! Auth::check() || ! Auth::user()->hasRole(['Administrador', 'Observador'])) {
             abort(403);
         }
 

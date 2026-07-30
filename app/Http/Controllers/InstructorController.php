@@ -17,7 +17,7 @@ class InstructorController extends Controller
      */
     public function index(IndexInstructorRequest $request)
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 

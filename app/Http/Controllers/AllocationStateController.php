@@ -19,7 +19,7 @@ class AllocationStateController extends Controller
      */
     public function index()
     {
-        if (!Auth::check() || !Auth::user()->hasRole(["Administrador", "Operador"])) {
+        if (!Auth::check() || !Auth::user()->canView()) {
             abort(403);
         }
 

@@ -17,7 +17,7 @@ class RolesAndPermissionsSeeder extends Seeder
     {
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        Permission::firstOrCreate(['name' => 'editar usuario']);
+        // Permissoes de visualizacao (acesso somente leitura)
         Permission::firstOrCreate(['name' => 'visualizar periodo letivo']);
         Permission::firstOrCreate(['name' => 'visualizar turmas']);
         Permission::firstOrCreate(['name' => 'visualizar dobradinhas']);
@@ -25,6 +25,11 @@ class RolesAndPermissionsSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'visualizar salas']);
         Permission::firstOrCreate(['name' => 'visualizar observações']);
         Permission::firstOrCreate(['name' => 'visualizar menu config']);
+        Permission::firstOrCreate(['name' => 'visualizar grade curricular']);
+        Permission::firstOrCreate(['name' => 'visualizar oferecimentos especiais']);
+
+        // Permissoes de alteracao (escrita / acoes com efeito colateral)
+        Permission::firstOrCreate(['name' => 'editar usuario']);
         Permission::firstOrCreate(['name' => 'reservar salas no urano']);
         Permission::firstOrCreate(['name' => 'distribuir turmas nas salas']);
         Permission::firstOrCreate(['name' => 'esvaziar salas']);
@@ -36,10 +41,26 @@ class RolesAndPermissionsSeeder extends Seeder
             ->givePermissionTo('visualizar turmas externas')
             ->givePermissionTo('visualizar salas')
             ->givePermissionTo('visualizar menu config')
+            ->givePermissionTo('visualizar grade curricular')
+            ->givePermissionTo('visualizar oferecimentos especiais')
             ->givePermissionTo('reservar salas no urano')
             ->givePermissionTo('distribuir turmas nas salas')
+            ->givePermissionTo('esvaziar salas')
+            ->givePermissionTo('visualizar observações');
+
+        // "Observador": enxerga todas as paginas (somente leitura).
+        // Nao recebe nenhuma permissao de escrita (editar/reservar/distribuir/esvaziar),
+        // garantindo que o menu apareca mas nenhum botao de acao seja funcional.
+        Role::firstOrCreate(['name' => 'Observador'])
+            ->givePermissionTo('visualizar periodo letivo')
+            ->givePermissionTo('visualizar turmas')
+            ->givePermissionTo('visualizar dobradinhas')
+            ->givePermissionTo('visualizar turmas externas')
+            ->givePermissionTo('visualizar salas')
             ->givePermissionTo('visualizar observações')
-            ->givePermissionTo('esvaziar salas');
+            ->givePermissionTo('visualizar menu config')
+            ->givePermissionTo('visualizar grade curricular')
+            ->givePermissionTo('visualizar oferecimentos especiais');
 
         Role::firstOrCreate(['name' => 'Administrador'])
             ->givePermissionTo(Permission::all());

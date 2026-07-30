@@ -44,4 +44,13 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    /**
+     * Perfis autorizados a visualizar as paginas de acesso restrito.
+     * Inclui o "Observador", que enxerga tudo mas nao pode alterar.
+     */
+    public function canView(): bool
+    {
+        return $this->hasRole(['Administrador', 'Operador', 'Observador']);
+    }
 }

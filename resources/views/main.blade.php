@@ -86,7 +86,7 @@
                     </ul>
                 </li>
             @endcan
-            @if(Auth::check() && Auth::user()->hasRole('Administrador'))
+            @if(Auth::check() && Auth::user()->hasRole(['Administrador', 'Observador']))
                 <li>
                     <a href="{{ route('solverlogs.index') }}">Logs Solver</a>
                 </li>

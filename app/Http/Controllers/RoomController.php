@@ -46,7 +46,7 @@ class RoomController extends Controller
      */
     public function index()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -107,7 +107,7 @@ class RoomController extends Controller
      */
     public function show(Room $room)
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -154,7 +154,7 @@ class RoomController extends Controller
 
     public function showFreeTime()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -298,7 +298,7 @@ class RoomController extends Controller
 
     public function compatible(CompatibleRoomRequest $request)
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 

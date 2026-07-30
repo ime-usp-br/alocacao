@@ -12,7 +12,7 @@ class MonitorController extends Controller
 {
     public function getImportProcess()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -25,7 +25,7 @@ class MonitorController extends Controller
 
     public function getReportProcess()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -38,7 +38,7 @@ class MonitorController extends Controller
 
     public function getReservationProcess()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -51,7 +51,7 @@ class MonitorController extends Controller
 
     public function getDistributionProcess()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 

@@ -31,7 +31,7 @@ class SchoolClassController extends Controller
      */
     public function index(IndexSchoolClassRequest $request)
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -63,7 +63,7 @@ class SchoolClassController extends Controller
      */
     public function create()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -153,7 +153,7 @@ class SchoolClassController extends Controller
      */
     public function edit(SchoolClass $schoolclass)
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
@@ -292,7 +292,7 @@ class SchoolClassController extends Controller
 
     public function externals()
     {
-        if(!Auth::check() or !Auth::user()->hasRole(["Administrador", "Operador"])){
+        if(!Auth::check() or !Auth::user()->canView()){
             abort(403);
         }
 
