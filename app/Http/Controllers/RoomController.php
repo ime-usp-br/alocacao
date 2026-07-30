@@ -304,9 +304,11 @@ class RoomController extends Controller
 
         $validated = $request->validated();
 
-        $room = Room::find($validated["room_id"]);
-
         $st = SchoolTerm::getLatest();
+
+        $room = Room::with(['schoolclasses' => function ($query) use ($st) {
+            $query->whereBelongsTo($st);
+        }, 'schoolclasses.classschedules'])->find($validated["room_id"]);
 
         $res = [];
 
