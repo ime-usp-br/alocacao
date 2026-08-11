@@ -18,7 +18,8 @@ class CheckAllocationConflicts extends Command
      */
     protected $signature = 'alocacao:verificar
                             {--output= : Salva o relatório em um arquivo de texto.}
-                            {--margem=2 : Margem (assentos - estmtr) a partir da qual uma turma é considerada "apertada" e tem seu estmtr confirmado pelo Skuld.}';
+                            {--margem=2 : Margem (assentos - estmtr) a partir da qual uma turma é considerada "apertada" e tem seu estmtr confirmado pelo Skuld.}
+                            {--no-skuld : Pula a consulta ao Skuld e usa apenas o estmtr local.}';
 
     /**
      * The console command description.
@@ -87,7 +88,15 @@ class CheckAllocationConflicts extends Command
         // ----------------------------------------------------------------
         $margem = (int) $this->option('margem');
         $apertadas = $this->detectarApertadas($alocadas, $margem, $capacidade);
-        $apertadas = $this->confirmarComSkuld($apertadas, $schoolterm);
+
+        if ($this->option('no-skuld')) {
+            foreach ($apertadas as &$a) {
+                $a['skuld_status'] = 'indisponivel';
+            }
+            unset($a);
+        } else {
+            $apertadas = $this->confirmarComSkuld($apertadas, $schoolterm);
+        }
 
         // ----------------------------------------------------------------
         // Geração do relatório (console e/ou arquivo)
